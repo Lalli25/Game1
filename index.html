@@ -1,0 +1,790 @@
+import React, { useEffect, useMemo, useRef, useState } from "react";
+
+/**
+ * Classroom Defense — Math Game v2
+ * Single-file React component designed for GitHub Pages (or any static host).
+ * - Theme: "Classroom Invasion" — Homework, Quizzes, Tests march toward your Desk.
+ * - Towers: Pencil, Eraser, Calculator, Ruler (→ Yardstick → Tape Measure).
+ * - Math Integration: Placing & upgrading towers is gated by a quick angle question popup
+ *   with a dynamically generated diagram (SVG) and auto-checking answers.
+ *
+ * Notes
+ * - No external assets required. Tailwind classes are used if available; falls back gracefully.
+ * - Pure client-side state; leaderboard can be added later via localStorage.
+ * - Path is a simple polyline; enemies follow using a percentage t ∈ [0,1].
+ */
+
+// ---------- Types ----------
+const TOWER_TYPES = {
+  PENCIL: "PENCIL",
+  ERASER: "ERASER",
+  CALCULATOR: "CALCULATOR",
+  RULER: "RULER", // upgrades → YARDSTICK → TAPE_MEASURE
+};
+
+const ENEMY_TYPES = {
+  HOMEWORK: "HOMEWORK",
+  QUIZ: "QUIZ",
+  TEST: "TEST",
+  FINAL: "FINAL",
+};
+
+// ---------- Helpers ----------
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function distance(a, b) {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return Math.hypot(dx, dy);
+}
+
+function clamp(n, lo, hi) {
+  return Math.max(lo, Math.min(hi, n));
+}
+
+function formatCoins(n) {
+  return Math.floor(n);
+}
+
+// ---------- Angle Question Generator (with SVG diagram) ----------
+/**
+ * Generates one of several angle-style problems:
+ * types: vertical, complementary, supplementary, addition, solve_x
+ * Returns { prompt, answer, svg, explain }
+ */
+function generateAngleProblem() {
+  const types = ["vertical", "complementary", "supplementary", "addition", "solve_x"];
+  const type = types[Math.floor(Math.random() * types.length)];
+
+  const size = 240; // svg size
+  const cx = size / 2;
+  const cy = size / 2;
+  const toRad = (deg) => (deg * Math.PI) / 180;
+
+  // helpers to draw rays from center at angle (degrees)
+  const rayTo = (deg, len = 90) => ({ x: cx + Math.cos(toRad(deg)) * len, y: cy + Math.sin(toRad(deg)) * len });
+
+  const labelAt = (deg, r = 50) => ({ x: cx + Math.cos(toRad(deg)) * r, y: cy + Math.sin(toRad(deg)) * r });
+
+  const arcPath = (startDeg, endDeg, r = 38) => {
+    const a0 = toRad(startDeg);
+    const a1 = toRad(endDeg);
+    const large = Math.abs(endDeg - startDeg) > 180 ? 1 : 0;
+    const sweep = endDeg > startDeg ? 1 : 0;
+    const p0 = { x: cx + Math.cos(a0) * r, y: cy + Math.sin(a0) * r };
+    const p1 = { x: cx + Math.cos(a1) * r, y: cy + Math.sin(a1) * r };
+    return `M ${p0.x} ${p0.y} A ${r} ${r} 0 ${large} ${sweep} ${p1.x} ${p1.y}`;
+  };
+
+  let prompt = "";
+  let answer = 0;
+  let explain = "";
+  let svg = null;
+
+  if (type === "vertical") {
+    const a = Math.floor(20 + Math.random() * 140); // 20..160
+    // two lines intersect; label one angle as a° and ask for vertical angle
+    const base = Math.floor(Math.random() * 360);
+    const base2 = (base + 180) % 360;
+    const base3 = (base + 90) % 360;
+    const base4 = (base3 + 180) % 360;
+    const p1 = rayTo(base, 90);
+    const p2 = rayTo(base2, 90);
+    const p3 = rayTo(base3, 90);
+    const p4 = rayTo(base4, 90);
+
+    const labelPos = labelAt((base + base3) / 2, 32);
+
+    prompt = `What is the measure of the vertical angle?`;
+    answer = a;
+    explain = `Vertical angles are equal, so the opposite angle has the same measure.`;
+    svg = (
+      <svg width={size} height={size} className="mx-auto">
+        <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="#111" strokeWidth={2} />
+        <line x1={p3.x} y1={p3.y} x2={p4.x} y2={p4.y} stroke="#111" strokeWidth={2} />
+        {/* show one acute/obtuse angle label */}
+        <path d={arcPath(base, base3, 28)} fill="none" stroke="#888" strokeWidth={2} />
+        <circle cx={cx} cy={cy} r={2.5} fill="#111" />
+        <text x={labelPos.x} y={labelPos.y} fontSize={14} textAnchor="middle" dominantBaseline="middle">{`${a}°`}</text>
+      </svg>
+    );
+  }
+
+  if (type === "complementary") {
+    const given = Math.floor(10 + Math.random() * 70); // 10..80
+    prompt = `If two angles are complementary and one is ${given}°, what is the other angle?`;
+    answer = 90 - given;
+    explain = `Complementary angles sum to 90°. So 90 - ${given} = ${answer}.`;
+
+    const base = 0;
+    const right = 90;
+    const mid = Math.floor(10 + Math.random() * 70);
+    const pBase = rayTo(base, 90);
+    const pRight = rayTo(right, 90);
+    const pMid = rayTo(mid, 90);
+
+    svg = (
+      <svg width={size} height={size} className="mx-auto">
+        {/* Right angle marker */}
+        <line x1={cx} y1={cy} x2={pBase.x} y2={pBase.y} stroke="#111" strokeWidth={2} />
+        <line x1={cx} y1={cy} x2={pRight.x} y2={pRight.y} stroke="#111" strokeWidth={2} />
+        <path d={arcPath(base, right, 24)} fill="none" stroke="#aaa" strokeWidth={2} />
+        <circle cx={cx} cy={cy} r={2.5} fill="#111" />
+        {/* One sub-angle labelled as given, the complement is ? */}
+        <path d={arcPath(base, mid, 20)} fill="none" stroke="#5b8" strokeWidth={3} />
+        <text {...labelAt(mid / 2, 28)} fontSize={14} textAnchor="middle" dominantBaseline="middle">{`${given}°`}</text>
+        <path d={arcPath(mid, right, 20)} fill="none" stroke="#e95" strokeWidth={3} />
+        <text {...labelAt((mid + right) / 2, 28)} fontSize={14} textAnchor="middle" dominantBaseline="middle">{`?`}</text>
+      </svg>
+    );
+  }
+
+  if (type === "supplementary") {
+    const given = Math.floor(20 + Math.random() * 150); // 20..170
+    prompt = `If two angles are supplementary and one is ${given}°, what is the other angle?`;
+    answer = 180 - given;
+    explain = `Supplementary angles sum to 180°. So 180 - ${given} = ${answer}.`;
+
+    const base = 0;
+    const straight = 180;
+    const mid = Math.floor(20 + Math.random() * 140);
+    const pBase = rayTo(base, 90);
+    const pStraight = rayTo(straight, 90);
+    const pMid = rayTo(mid, 90);
+
+    svg = (
+      <svg width={size} height={size} className="mx-auto">
+        <line x1={cx} y1={cy} x2={pBase.x} y2={pBase.y} stroke="#111" strokeWidth={2} />
+        <line x1={cx} y1={cy} x2={pStraight.x} y2={pStraight.y} stroke="#111" strokeWidth={2} />
+        <path d={arcPath(base, straight, 24)} fill="none" stroke="#aaa" strokeWidth={2} />
+        <circle cx={cx} cy={cy} r={2.5} fill="#111" />
+        <path d={arcPath(base, mid, 20)} fill="none" stroke="#5b8" strokeWidth={3} />
+        <text {...labelAt(mid / 2, 28)} fontSize={14} textAnchor="middle" dominantBaseline="middle">{`${given}°`}</text>
+        <path d={arcPath(mid, straight, 20)} fill="none" stroke="#e95" strokeWidth={3} />
+        <text {...labelAt((mid + straight) / 2, 28)} fontSize={14} textAnchor="middle" dominantBaseline="middle">{`?`}</text>
+      </svg>
+    );
+  }
+
+  if (type === "addition") {
+    const a = Math.floor(15 + Math.random() * 70);
+    const b = Math.floor(10 + Math.random() * 60);
+    prompt = `In the diagram, ∠ABD = ${a}° and ∠DBC = ${b}°. What is ∠ABC?`;
+    answer = a + b;
+    explain = `Angle Addition Postulate: ∠ABC = ∠ABD + ∠DBC = ${a} + ${b} = ${answer}.`;
+
+    const start = 340; // a little above 0
+    const split = start + a;
+    const end = split + b;
+
+    const pStart = rayTo(start, 90);
+    const pSplit = rayTo(split, 90);
+    const pEnd = rayTo(end, 90);
+
+    svg = (
+      <svg width={size} height={size} className="mx-auto">
+        <line x1={cx} y1={cy} x2={pStart.x} y2={pStart.y} stroke="#111" strokeWidth={2} />
+        <line x1={cx} y1={cy} x2={pSplit.x} y2={pSplit.y} stroke="#111" strokeWidth={2} />
+        <line x1={cx} y1={cy} x2={pEnd.x} y2={pEnd.y} stroke="#111" strokeWidth={2} />
+        <circle cx={cx} cy={cy} r={2.5} fill="#111" />
+        <path d={arcPath(start, split, 22)} fill="none" stroke="#5b8" strokeWidth={3} />
+        <text {...labelAt((start + split) / 2, 30)} fontSize={14} textAnchor="middle" dominantBaseline="middle">{`${a}°`}</text>
+        <path d={arcPath(split, end, 22)} fill="none" stroke="#e95" strokeWidth={3} />
+        <text {...labelAt((split + end) / 2, 30)} fontSize={14} textAnchor="middle" dominantBaseline="middle">{`${b}°`}</text>
+      </svg>
+    );
+  }
+
+  if (type === "solve_x") {
+    // ∠ABC = T, ∠ABD = x + c, ∠DBC = k (numbers chosen so x is a small integer)
+    const c = [2, 4, 6, 8, 10][Math.floor(Math.random() * 5)];
+    const k = [20, 25, 30, 35, 40][Math.floor(Math.random() * 5)];
+    const x = Math.floor(5 + Math.random() * 15);
+    const total = x + c + k; // ensures integer x solution
+
+    prompt = `∠ABC = ${total}°. If ∠ABD = x + ${c} and ∠DBC = ${k}°, solve for x.`;
+    answer = x;
+    explain = `Angle Addition: (x + ${c}) + ${k} = ${total} ⇒ x = ${total} - ${k} - ${c} = ${x}.`;
+
+    const start = 300;
+    const split = start + (x + c);
+    const end = split + k;
+
+    const pStart = rayTo(start, 90);
+    const pSplit = rayTo(split, 90);
+    const pEnd = rayTo(end, 90);
+
+    svg = (
+      <svg width={size} height={size} className="mx-auto">
+        <line x1={cx} y1={cy} x2={pStart.x} y2={pStart.y} stroke="#111" strokeWidth={2} />
+        <line x1={cx} y1={cy} x2={pSplit.x} y2={pSplit.y} stroke="#111" strokeWidth={2} />
+        <line x1={cx} y1={cy} x2={pEnd.x} y2={pEnd.y} stroke="#111" strokeWidth={2} />
+        <circle cx={cx} cy={cy} r={2.5} fill="#111" />
+        <path d={arcPath(start, split, 22)} fill="none" stroke="#5b8" strokeWidth={3} />
+        <text {...labelAt((start + split) / 2, 30)} fontSize={14} textAnchor="middle" dominantBaseline="middle">{`x + ${c}`}</text>
+        <path d={arcPath(split, end, 22)} fill="none" stroke="#e95" strokeWidth={3} />
+        <text {...labelAt((split + end) / 2, 30)} fontSize={14} textAnchor="middle" dominantBaseline="middle">{`${k}°`}</text>
+        <path d={arcPath(start, end, 30)} fill="none" stroke="#777" strokeDasharray="4 4" strokeWidth={2} />
+        <text {...labelAt((start + end) / 2, 38)} fontSize={13} textAnchor="middle" dominantBaseline="middle">{`∠ABC = ${total}°`}</text>
+      </svg>
+    );
+  }
+
+  return { type, prompt, answer, svg, explain };
+}
+
+// ---------- Math Modal ----------
+function MathGateModal({ open, cost, onClose, onPass }) {
+  const [problem, setProblem] = useState(null);
+  const [user, setUser] = useState("");
+  const [result, setResult] = useState(null); // null | true | false
+
+  useEffect(() => {
+    if (open) {
+      const p = generateAngleProblem();
+      setProblem(p);
+      setUser("");
+      setResult(null);
+    }
+  }, [open]);
+
+  if (!open || !problem) return null;
+
+  function check() {
+    const num = Number(user);
+    if (!Number.isFinite(num)) {
+      setResult(false);
+      return;
+    }
+    if (Math.round(num) === Math.round(problem.answer)) {
+      setResult(true);
+      setTimeout(() => {
+        onPass();
+      }, 400);
+    } else {
+      setResult(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white w-[340px] rounded-2xl shadow-xl p-4 border">
+        <div className="text-sm text-gray-600">Spend {cost} Study Points</div>
+        <h3 className="text-lg font-bold mt-1">Unlock/Upgrade — Quick Angle Check</h3>
+        <div className="mt-2">{problem.svg}</div>
+        <p className="text-sm mt-2">{problem.prompt}</p>
+        <input
+          className="mt-2 w-full border rounded-lg px-3 py-2"
+          placeholder="Enter a number"
+          value={user}
+          onChange={(e) => setUser(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && check()}
+        />
+        {result === false && (
+          <div className="text-red-600 text-sm mt-2">Not quite — try again.</div>
+        )}
+        {result === true && (
+          <div className="text-green-600 text-sm mt-2">Correct! 🎉</div>
+        )}
+        <div className="flex gap-2 mt-3 justify-end">
+          <button className="px-3 py-2 rounded-lg bg-gray-200" onClick={onClose}>Cancel</button>
+          <button className="px-3 py-2 rounded-lg bg-blue-600 text-white" onClick={check}>Confirm</button>
+        </div>
+        <div className="text-xs text-gray-500 mt-2">Hint: {problem.explain}</div>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Core Game ----------
+const MAP_W = 800;
+const MAP_H = 460;
+
+// Simple path points (polyline) enemies follow
+const PATH = [
+  { x: 20, y: 60 },
+  { x: 300, y: 60 },
+  { x: 300, y: 220 },
+  { x: 540, y: 220 },
+  { x: 540, y: 380 },
+  { x: 760, y: 380 }, // near base/desk
+];
+
+function pathLength(points) {
+  let L = 0;
+  for (let i = 0; i < points.length - 1; i++) L += distance(points[i], points[i + 1]);
+  return L;
+}
+
+const PATH_LENGTH = pathLength(PATH);
+
+function pointAtT(points, t) {
+  // t: 0..1 along total polyline length
+  let target = t * PATH_LENGTH;
+  let acc = 0;
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+    const seg = distance(a, b);
+    if (acc + seg >= target) {
+      const local = (target - acc) / seg;
+      return { x: lerp(a.x, b.x, local), y: lerp(a.y, b.y, local) };
+    }
+    acc += seg;
+  }
+  return points[points.length - 1];
+}
+
+function enemyStats(type, wave) {
+  const scale = 1 + wave * 0.05;
+  switch (type) {
+    case ENEMY_TYPES.HOMEWORK:
+      return { hp: 12 * scale, speed: 0.045, reward: 4 };
+    case ENEMY_TYPES.QUIZ:
+      return { hp: 26 * scale, speed: 0.038, reward: 8 };
+    case ENEMY_TYPES.TEST:
+      return { hp: 60 * scale, speed: 0.032, reward: 16 };
+    case ENEMY_TYPES.FINAL:
+      return { hp: 220 * scale, speed: 0.026, reward: 50 };
+    default:
+      return { hp: 20, speed: 0.04, reward: 5 };
+  }
+}
+
+function baseTowerStats(kind, level = 1) {
+  // level 1..3
+  const L = clamp(level, 1, 3);
+  if (kind === TOWER_TYPES.PENCIL) {
+    return { range: 110 + 8 * L, dmg: 6 + 2 * L, fireRate: 650 - 30 * L };
+  }
+  if (kind === TOWER_TYPES.ERASER) {
+    return { range: 120 + 10 * L, dmg: 12 + 4 * L, fireRate: 900 - 40 * L };
+  }
+  if (kind === TOWER_TYPES.CALCULATOR) {
+    return { range: 135 + 12 * L, dmg: 8 + 1 * L, fireRate: 400 - 15 * L, chain: 2 + (L - 1) };
+  }
+  if (kind === TOWER_TYPES.RULER) {
+    // upgrades theme: Ruler → Yardstick → Tape Measure
+    return { range: 170 + 20 * L, dmg: 10 + 3 * L, fireRate: 800 - 60 * L, pierce: 1 + L };
+  }
+  return { range: 100, dmg: 5, fireRate: 800 };
+}
+
+function kindLabel(kind, level) {
+  if (kind === TOWER_TYPES.RULER) {
+    return ["Ruler", "Yardstick", "Tape Measure"][level - 1] || "Ruler";
+  }
+  if (kind === TOWER_TYPES.PENCIL) return ["Pencil", "Pen", "Marker"][level - 1] || "Pencil";
+  if (kind === TOWER_TYPES.ERASER) return ["Eraser", "Board Eraser", "Giant Sponge"][level - 1] || "Eraser";
+  if (kind === TOWER_TYPES.CALCULATOR) return ["Calculator", "Sci Calc", "Graphing Calc"][level - 1] || "Calculator";
+  return kind;
+}
+
+const BASE_COST = {
+  [TOWER_TYPES.PENCIL]: 20,
+  [TOWER_TYPES.ERASER]: 35,
+  [TOWER_TYPES.CALCULATOR]: 45,
+  [TOWER_TYPES.RULER]: 60,
+};
+
+function upgradeCost(level) {
+  return 25 + level * 30;
+}
+
+// ---------- Component ----------
+export default function ClassroomDefense() {
+  const [coins, setCoins] = useState(80);
+  const [lives, setLives] = useState(20);
+  const [wave, setWave] = useState(1);
+  const [inWave, setInWave] = useState(false);
+
+  const [towers, setTowers] = useState([]); // {id,x,y,kind,level,lastShot}
+  const [enemies, setEnemies] = useState([]); // {id,t, hp, type}
+  const [projectiles, setProjectiles] = useState([]); // {id, x,y, vx,vy, dmg, pierce, chain}
+
+  const [selectedKind, setSelectedKind] = useState(null); // placing mode
+
+  const [mathOpen, setMathOpen] = useState(false);
+  const pendingAction = useRef(null); // { type: 'place'|'upgrade', payload }
+
+  const mapRef = useRef(null);
+
+  // spawn wave
+  useEffect(() => {
+    let spawnTimer;
+    if (inWave) {
+      let i = 0;
+      const schedule = [];
+      // simple composition per wave
+      const count = 10 + wave * 2;
+      for (let k = 0; k < count; k++) {
+        const r = Math.random();
+        let type = ENEMY_TYPES.HOMEWORK;
+        if (wave >= 3 && r > 0.7) type = ENEMY_TYPES.QUIZ;
+        if (wave >= 6 && r > 0.85) type = ENEMY_TYPES.TEST;
+        if (wave % 7 === 0 && k === count - 1) type = ENEMY_TYPES.FINAL;
+        schedule.push(type);
+      }
+      spawnTimer = setInterval(() => {
+        if (i >= schedule.length) {
+          clearInterval(spawnTimer);
+          setTimeout(() => setInWave(false), 2000);
+          return;
+        }
+        const type = schedule[i++];
+        const st = enemyStats(type, wave);
+        setEnemies((prev) => [
+          ...prev,
+          { id: crypto.randomUUID(), t: 0, hp: st.hp, type },
+        ]);
+      }, 650);
+    }
+    return () => clearInterval(spawnTimer);
+  }, [inWave, wave]);
+
+  // main game loop
+  useEffect(() => {
+    let last = performance.now();
+    let raf;
+    const step = (now) => {
+      const dt = (now - last) / 1000; // seconds
+      last = now;
+
+      // move enemies along path
+      setEnemies((prev) => {
+        const out = [];
+        for (const e of prev) {
+          const st = enemyStats(e.type, wave);
+          const tNext = e.t + st.speed * dt * 0.12; // speed tuning
+          if (tNext >= 1) {
+            // reached base
+            setLives((L) => Math.max(0, L - (e.type === ENEMY_TYPES.FINAL ? 5 : 1)));
+          } else {
+            out.push({ ...e, t: tNext });
+          }
+        }
+        return out;
+      });
+
+      // towers fire
+      setTowers((prev) => {
+        const nowMs = performance.now();
+        // capture enemies positions once
+        const ens = enemies.map((e) => ({ ...e, pos: pointAtT(PATH, e.t) }));
+        const newProjectiles = [];
+        const updated = prev.map((tw) => {
+          const st = baseTowerStats(tw.kind, tw.level);
+          if (!tw.lastShot || nowMs - tw.lastShot > st.fireRate) {
+            // find target in range
+            let target = null;
+            let maxT = -1;
+            for (const e of ens) {
+              const pos = e.pos;
+              if (distance({ x: tw.x, y: tw.y }, pos) <= st.range) {
+                if (e.t > maxT) {
+                  maxT = e.t;
+                  target = e;
+                }
+              }
+            }
+            if (target) {
+              // fire
+              const angle = Math.atan2(target.pos.y - tw.y, target.pos.x - tw.x);
+              const speed = 300;
+              newProjectiles.push({
+                id: crypto.randomUUID(),
+                x: tw.x,
+                y: tw.y,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                dmg: st.dmg,
+                pierce: st.pierce || 0,
+                chain: st.chain || 0,
+              });
+              return { ...tw, lastShot: nowMs };
+            }
+          }
+          return tw;
+        });
+        if (newProjectiles.length)
+          setProjectiles((p) => [...p, ...newProjectiles]);
+        return updated;
+      });
+
+      // move projectiles & handle collisions
+      setProjectiles((prev) => {
+        const out = [];
+        const ens = enemies.map((e) => ({ ...e, pos: pointAtT(PATH, e.t) }));
+        for (const p of prev) {
+          const nx = p.x + p.vx * dt;
+          const ny = p.y + p.vy * dt;
+          let hitIndex = -1;
+          for (let i = 0; i < ens.length; i++) {
+            if (distance({ x: nx, y: ny }, ens[i].pos) < 14) {
+              hitIndex = i;
+              break;
+            }
+          }
+          if (hitIndex >= 0) {
+            // apply damage
+            const eHit = ens[hitIndex];
+            setEnemies((arr) => {
+              const copy = [...arr];
+              const idx = copy.findIndex((x) => x.id === eHit.id);
+              if (idx >= 0) {
+                const type = copy[idx].type;
+                copy[idx] = { ...copy[idx], hp: copy[idx].hp - p.dmg };
+                if (copy[idx].hp - p.dmg <= 0) {
+                  const st = enemyStats(type, wave);
+                  copy.splice(idx, 1);
+                  setCoins((c) => c + st.reward);
+                }
+              }
+              return copy;
+            });
+            // pierce/chain support (simple: let it continue with reduced pierce)
+            if (p.pierce && p.pierce > 0) {
+              out.push({ ...p, x: nx, y: ny, pierce: p.pierce - 1 });
+            } else if (p.chain && p.chain > 0) {
+              // chain: retarget nearest other enemy within 80px
+              const others = ens.filter((e) => e.id !== eHit.id);
+              let best = null;
+              let bestD = 1e9;
+              for (const e of others) {
+                const d = distance({ x: nx, y: ny }, e.pos);
+                if (d < 80 && d < bestD) {
+                  best = e;
+                  bestD = d;
+                }
+              }
+              if (best) {
+                const ang = Math.atan2(best.pos.y - ny, best.pos.x - nx);
+                out.push({ ...p, x: nx, y: ny, vx: Math.cos(ang) * 300, vy: Math.sin(ang) * 300, chain: p.chain - 1 });
+              }
+            }
+            // else: projectile consumed
+          } else if (nx < -20 || ny < -20 || nx > MAP_W + 20 || ny > MAP_H + 20) {
+            // off-screen
+          } else {
+            out.push({ ...p, x: nx, y: ny });
+          }
+        }
+        return out;
+      });
+
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [enemies, wave]);
+
+  // wave completion → advance wave if no enemies
+  useEffect(() => {
+    if (!inWave && enemies.length === 0) {
+      setWave((w) => w + 1);
+      setCoins((c) => c + 25); // small bonus between waves
+    }
+  }, [inWave, enemies.length]);
+
+  // lose condition
+  useEffect(() => {
+    if (lives <= 0) {
+      alert("Class dismissed! The Exams reached your desk. Reload to try again.");
+    }
+  }, [lives]);
+
+  function beginWave() {
+    if (!inWave) setInWave(true);
+  }
+
+  function mapClick(e) {
+    if (!selectedKind) return;
+    const rect = mapRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    // prevent placement too close to path
+    const tooClose = PATH.some((p, i) => {
+      if (i === PATH.length - 1) return false;
+      const a = PATH[i];
+      const b = PATH[i + 1];
+      const px = x;
+      const py = y;
+      const A = { x: a.x, y: a.y };
+      const B = { x: b.x, y: b.y };
+      const ABx = B.x - A.x, ABy = B.y - A.y;
+      const t = clamp(((px - A.x) * ABx + (py - A.y) * ABy) / (ABx * ABx + ABy * ABy), 0, 1);
+      const proj = { x: A.x + ABx * t, y: A.y + ABy * t };
+      return distance({ x, y }, proj) < 36; // keep a lane
+    });
+    if (tooClose) return;
+
+    // math gate: placing costs BASE_COST
+    const cost = BASE_COST[selectedKind];
+    if (coins < cost) return;
+
+    // open math modal; on pass, place
+    pendingAction.current = { type: "place", payload: { x, y, kind: selectedKind, cost } };
+    setMathOpen(true);
+  }
+
+  function requestUpgrade(tower) {
+    const cost = upgradeCost(tower.level);
+    if (coins < cost) return;
+    pendingAction.current = { type: "upgrade", payload: { id: tower.id, cost } };
+    setMathOpen(true);
+  }
+
+  function onMathPass() {
+    // process pending action and deduct coins
+    const act = pendingAction.current;
+    if (!act) return setMathOpen(false);
+
+    if (act.type === "place") {
+      setCoins((c) => c - act.payload.cost);
+      setTowers((arr) => [
+        ...arr,
+        { id: crypto.randomUUID(), x: act.payload.x, y: act.payload.y, kind: act.payload.kind, level: 1, lastShot: 0 },
+      ]);
+      setSelectedKind(null);
+    }
+    if (act.type === "upgrade") {
+      setCoins((c) => c - act.payload.cost);
+      setTowers((arr) => arr.map((t) => (t.id === act.payload.id ? { ...t, level: clamp(t.level + 1, 1, 3) } : t)));
+    }
+
+    pendingAction.current = null;
+    setMathOpen(false);
+  }
+
+  function onMathClose() {
+    pendingAction.current = null;
+    setMathOpen(false);
+  }
+
+  const pathPolyline = useMemo(() => PATH.map((p) => `${p.x},${p.y}`).join(" "), []);
+
+  return (
+    <div className="w-full min-h-screen bg-[#f6f7fb] text-gray-900 p-4">
+      <div className="max-w-[1000px] mx-auto">
+        <h1 className="text-2xl font-extrabold tracking-tight">📚 Classroom Defense — Math Game v2</h1>
+        <p className="text-sm text-gray-600">Defend your desk from Angry Homework, Quizzes, and Tests. Place classroom-themed towers — but each placement/upgrade requires a quick angle question!</p>
+
+        <div className="mt-3 flex items-center gap-3 flex-wrap">
+          <div className="px-3 py-2 rounded-xl bg-white shadow border">💰 Study Points: <b>{formatCoins(coins)}</b></div>
+          <div className="px-3 py-2 rounded-xl bg-white shadow border">❤️ Lives: <b>{lives}</b></div>
+          <div className="px-3 py-2 rounded-xl bg-white shadow border">📈 Wave: <b>{wave}</b></div>
+          <button className={`px-4 py-2 rounded-xl shadow text-white ${inWave ? "bg-gray-400" : "bg-emerald-600 hover:bg-emerald-700"}`} onClick={beginWave} disabled={inWave}>
+            {inWave ? "Wave Running…" : "Start Wave"}
+          </button>
+        </div>
+
+        {/* Build Bar */}
+        <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {Object.values(TOWER_TYPES).map((kind) => (
+            <button
+              key={kind}
+              onClick={() => setSelectedKind(kind)}
+              className={`border rounded-xl p-3 bg-white shadow hover:shadow-md transition ${selectedKind === kind ? "ring-2 ring-blue-500" : ""}`}
+            >
+              <div className="font-bold">{kindLabel(kind, 1)}</div>
+              <div className="text-xs text-gray-600 mt-1">Cost: {BASE_COST[kind]}</div>
+              <div className="text-xs text-gray-500">{(() => {
+                const s = baseTowerStats(kind, 1);
+                return `Rng ${Math.floor(s.range)} / Dmg ${s.dmg} / ROF ${Math.max(200, s.fireRate)}ms`;
+              })()}</div>
+            </button>
+          ))}
+        </div>
+
+        {/* Game Board */}
+        <div className="mt-4 relative bg-[url('data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\"><rect width=\"20\" height=\"20\" fill=\"%23ffffff\"/><path d=\"M0 20 L20 0\" stroke=\"%23f1f1f1\" stroke-width=\"1\"/></svg>')] rounded-3xl border shadow overflow-hidden">
+          <svg ref={mapRef} width={MAP_W} height={MAP_H} onClick={mapClick} className="block">
+            {/* Classroom floor */}
+            <rect x={0} y={0} width={MAP_W} height={MAP_H} fill="#fdfdfd" />
+
+            {/* Path */}
+            <polyline points={pathPolyline} fill="none" stroke="#d4d4d8" strokeWidth={26} strokeLinejoin="round" strokeLinecap="round" />
+            <polyline points={pathPolyline} fill="none" stroke="#9ca3af" strokeWidth={6} strokeLinejoin="round" strokeLinecap="round" />
+
+            {/* Base / Desk */}
+            <g>
+              <rect x={730} y={340} width={52} height={52} rx={10} fill="#fff7ed" stroke="#fb923c" strokeWidth={3} />
+              <text x={756} y={368} textAnchor="middle" fontSize={12}>Desk</text>
+            </g>
+
+            {/* Towers */}
+            {towers.map((t) => (
+              <g key={t.id} onClick={(e) => { e.stopPropagation(); requestUpgrade(t); }} className="cursor-pointer">
+                <circle cx={t.x} cy={t.y} r={16} fill="#e2e8f0" stroke="#475569" strokeWidth={2} />
+                <text x={t.x} y={t.y + 4} textAnchor="middle" fontSize={11} fontFamily="monospace">
+                  {kindLabel(t.kind, t.level).slice(0, 2)}
+                </text>
+                {/* range (hover idea): */}
+                {/* <circle cx={t.x} cy={t.y} r={baseTowerStats(t.kind,t.level).range} fill="none" stroke="#cbd5e1" strokeDasharray="4 4" /> */}
+              </g>
+            ))}
+
+            {/* Enemies */}
+            {enemies.map((e) => {
+              const pos = pointAtT(PATH, e.t);
+              let emoji = "📄"; // homework
+              if (e.type === ENEMY_TYPES.QUIZ) emoji = "❓";
+              if (e.type === ENEMY_TYPES.TEST) emoji = "📘";
+              if (e.type === ENEMY_TYPES.FINAL) emoji = "📚";
+              return (
+                <g key={e.id}>
+                  <text x={pos.x} y={pos.y} fontSize={18} textAnchor="middle" dominantBaseline="middle">{emoji}</text>
+                  <rect x={pos.x - 16} y={pos.y - 22} width={32} height={4} fill="#fee2e2" rx={2} />
+                  <rect x={pos.x - 16} y={pos.y - 22} width={clamp((e.hp / enemyStats(e.type, wave).hp) * 32, 0, 32)} height={4} fill="#ef4444" rx={2} />
+                </g>
+              );
+            })}
+
+            {/* Projectiles */}
+            {projectiles.map((p) => (
+              <circle key={p.id} cx={p.x} cy={p.y} r={3} fill="#111827" />
+            ))}
+          </svg>
+        </div>
+
+        <div className="mt-3 text-xs text-gray-600">
+          Tip: Click a tower to upgrade (math gated). You can’t build too close to the hallway (path).
+        </div>
+
+        <div className="mt-6 grid gap-2 sm:grid-cols-2">
+          <div className="bg-white rounded-2xl border shadow p-3">
+            <h3 className="font-semibold">Towers</h3>
+            <ul className="text-sm list-disc ml-5 mt-1">
+              <li>✏️ <b>Pencil</b> → Pen → Marker (fast, light damage)</li>
+              <li>⬜ <b>Eraser</b> → Board Eraser → Giant Sponge (slow, heavy)</li>
+              <li>🔢 <b>Calculator</b> → Sci Calc → Graphing Calc (chains to nearby enemies)</li>
+              <li>📏 <b>Ruler</b> → Yardstick → Tape Measure (long range, pierces)</li>
+            </ul>
+          </div>
+          <div className="bg-white rounded-2xl border shadow p-3">
+            <h3 className="font-semibold">Enemies</h3>
+            <ul className="text-sm list-disc ml-5 mt-1">
+              <li>📄 Homework — fast, low HP</li>
+              <li>❓ Quiz — medium speed, medium HP</li>
+              <li>📘 Test — slow, tanky</li>
+              <li>📚 Final — boss each 7th wave</li>
+            </ul>
+          </div>
+        </div>
+
+        <div className="mt-6 text-xs text-gray-500">Made for GitHub Pages — single-file React component. Add sounds/graphics later!</div>
+      </div>
+
+      {/* Math modal */}
+      <MathGateModal
+        open={mathOpen}
+        cost={pendingAction.current?.payload?.cost ?? 0}
+        onClose={onMathClose}
+        onPass={onMathPass}
+      />
+    </div>
+  );
+}
