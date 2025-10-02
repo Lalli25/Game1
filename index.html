@@ -45,31 +45,24 @@
         return pts[pts.length-1];
       }
 
-      // balance
+      // balance (harder)
       function enemyStats(type,wave){
-        const s = 1 + wave*0.06;
+        const s = 1 + wave*0.08; // was 0.06
         switch(type){
-          case ENEMY_TYPES.HOMEWORK: return { hp:14*s, speed:0.050, reward:4 };
-          case ENEMY_TYPES.QUIZ:     return { hp:30*s, speed:0.040, reward:8 };
-          case ENEMY_TYPES.TEST:     return { hp:70*s, speed:0.033, reward:16 };
-          case ENEMY_TYPES.FINAL:    return { hp:260*s, speed:0.028, reward:50 };
+          case ENEMY_TYPES.HOMEWORK: return { hp:16*s, speed:0.054, reward:4 };
+          case ENEMY_TYPES.QUIZ:     return { hp:34*s, speed:0.042, reward:8 };
+          case ENEMY_TYPES.TEST:     return { hp:80*s, speed:0.034, reward:16 };
+          case ENEMY_TYPES.FINAL:    return { hp:300*s, speed:0.03,  reward:50 };
           default:                   return { hp:20, speed:0.04, reward:5 };
         }
       }
       function baseTowerStats(kind, level=1){
         const L=clamp(level,1,3);
-        if(kind===TOWER_TYPES.PENCIL)     return { range:120+10*L, dmg:6+2*L,  fireRate:600-30*L };
-        if(kind===TOWER_TYPES.ERASER)     return { range:135+12*L, dmg:12+4*L, fireRate:880-40*L };
-        if(kind===TOWER_TYPES.CALCULATOR) return { range:150+14*L, dmg:8+1*L,  fireRate:380-15*L, chain:2+(L-1) };
-        if(kind===TOWER_TYPES.RULER)      return { range:190+22*L, dmg:10+3*L, fireRate:760-60*L, pierce:1+L };
-        return { range:100, dmg:5, fireRate:800 };
-      }
-      function kindLabel(kind, level){
-        if(kind===TOWER_TYPES.RULER)      return ["Ruler","Yardstick","Tape Measure"][level-1]||"Ruler";
-        if(kind===TOWER_TYPES.PENCIL)     return ["Pencil","Pen","Marker"][level-1]||"Pencil";
-        if(kind===TOWER_TYPES.ERASER)     return ["Eraser","Board Eraser","Giant Sponge"][level-1]||"Eraser";
-        if(kind===TOWER_TYPES.CALCULATOR) return ["Calculator","Sci Calc","Graphing Calc"][level-1]||"Calculator";
-        return kind;
+        if(kind===TOWER_TYPES.PENCIL)     return { range:120+12*L, dmg:6+2*L,  fireRate:600-30*L, name:["Pencil","Pen","Marker"][L-1] };
+        if(kind===TOWER_TYPES.ERASER)     return { range:135+12*L, dmg:12+4*L, fireRate:880-40*L, name:["Eraser","Board Eraser","Giant Sponge"][L-1] };
+        if(kind===TOWER_TYPES.CALCULATOR) return { range:150+14*L, dmg:8+1*L,  fireRate:380-15*L, chain:2+(L-1), name:["Calculator","Sci Calc","Graphing Calc"][L-1] };
+        if(kind===TOWER_TYPES.RULER)      return { range:190+22*L, dmg:10+3*L, fireRate:760-60*L, pierce:1+L, name:["Ruler","Yardstick","Tape Measure"][L-1] };
+        return { range:100, dmg:5, fireRate:800, name:"" };
       }
       const BASE_COST = { PENCIL:20, ERASER:35, CALCULATOR:45, RULER:60 };
       function upgradeCost(level){ return 30 + level*35 }
@@ -97,53 +90,148 @@
         );
       }
 
-      // tower sprites
+      // tower sprites (change by level)
       function TowerSprite({ kind, level=1, x, y, scale=1, opacity=1 }){
         const s = scale;
+        // Pencil → Pen → Marker
         if(kind === TOWER_TYPES.PENCIL){
+          if(level===1){ // Pencil
+            return (
+              <g opacity={opacity} transform={`translate(${x-12*s},${y-12*s}) scale(${s})`}>
+                <rect x={2} y={6} width={20} height={12} rx={2} fill="#f59e0b" stroke="#92400e"/>
+                <polygon points="22,6 30,12 22,18" fill="#fde68a" stroke="#92400e"/>
+                <polygon points="30,12 32,12 30,11" fill="#111"/>
+              </g>
+            );
+          }
+          if(level===2){ // Pen
+            return (
+              <g opacity={opacity} transform={`translate(${x-14*s},${y-6*s}) scale(${s})`}>
+                <rect x={0} y={2} width={28} height={8} rx={4} fill="#2563eb" stroke="#1e40af"/>
+                <rect x={24} y={2} width={6} height={8} rx={1} fill="#93c5fd" stroke="#1e40af"/>
+              </g>
+            );
+          }
+          // Marker
           return (
-            <g opacity={opacity} transform={`translate(${x-12*s},${y-12*s}) scale(${s})`}>
-              <rect x={2} y={6} width={20} height={12} rx={2} fill="#f59e0b" stroke="#92400e"/>
-              <polygon points="22,6 30,12 22,18" fill="#fde68a" stroke="#92400e"/>
-              <polygon points="30,12 32,12 30,11" fill="#111"/>
+            <g opacity={opacity} transform={`translate(${x-16*s},${y-8*s}) scale(${s})`}>
+              <rect x={0} y={2} width={32} height={12} rx={4} fill="#111827" stroke="#334155"/>
+              <rect x={2} y={4} width={8} height={8} rx={2} fill="#ef4444" />
             </g>
           );
         }
+        // Eraser → Board Eraser → Giant Sponge
         if(kind === TOWER_TYPES.ERASER){
+          if(level===1){
+            return (
+              <g opacity={opacity} transform={`translate(${x-14*s},${y-10*s}) scale(${s})`}>
+                <rect x={0} y={0} width={28} height={20} rx={6} fill="#fecdd3" stroke="#fb7185"/>
+                <rect x={10} y={0} width={18} height={20} rx={6} fill="#fdf2f8" stroke="#f472b6"/>
+              </g>
+            );
+          }
+          if(level===2){
+            return (
+              <g opacity={opacity} transform={`translate(${x-18*s},${y-10*s}) scale(${s})`}>
+                <rect x={0} y={2} width={36} height={16} rx={4} fill="#0ea5e9" stroke="#0369a1"/>
+                <rect x={2} y={14} width={32} height={4} rx={2} fill="#1f2937"/>
+              </g>
+            );
+          }
           return (
-            <g opacity={opacity} transform={`translate(${x-14*s},${y-10*s}) scale(${s})`}>
-              <rect x={0} y={0} width={28} height={20} rx={6} fill="#fecdd3" stroke="#fb7185"/>
-              <rect x={10} y={0} width={18} height={20} rx={6} fill="#fdf2f8" stroke="#f472b6"/>
+            <g opacity={opacity} transform={`translate(${x-16*s},${y-10*s}) scale(${s})`}>
+              <rect x={0} y={0} width={32} height={20} rx={6} fill="#fde68a" stroke="#f59e0b"/>
+              <circle cx={6} cy={6} r={1.5} fill="#f59e0b"/><circle cx={12} cy={12} r={1.5} fill="#f59e0b"/>
+              <circle cx={20} cy={8} r={1.5} fill="#f59e0b"/><circle cx={26} cy={14} r={1.5} fill="#f59e0b"/>
             </g>
           );
         }
+        // Calculator → Sci Calc → Graphing Calc
         if(kind === TOWER_TYPES.CALCULATOR){
-          return (
-            <g opacity={opacity} transform={`translate(${x-14*s},${y-18*s}) scale(${s})`}>
-              <rect x={0} y={0} width={28} height={36} rx={4} fill="#e5e7eb" stroke="#9ca3af"/>
-              <rect x={4} y={4} width={20} height={8} rx={2} fill="#d1fae5" stroke="#10b981"/>
-              {[...Array(6)].map((_,i)=>{const r=Math.floor(i/3), c=i%3;
-                return <rect key={i} x={4+c*7} y={16+r*7} width={5} height={5} rx={1} fill="#fff" stroke="#9ca3af"/>})}
-            </g>
+          const shell = (w,h,screenColor='#d1fae5') => (
+            <>
+              <rect x={0} y={0} width={w} height={h} rx={4} fill="#e5e7eb" stroke="#9ca3af"/>
+              <rect x={4} y={4} width={w-8} height={10} rx={2} fill={screenColor} stroke="#10b981"/>
+              {[...Array(8)].map((_,i)=>{const cols=4, r=Math.floor(i/cols), c=i%cols; return (
+                <rect key={i} x={4+c*6} y={18+r*6} width="5" height="5" rx="1" fill="#fff" stroke="#9ca3af"/>
+              )})}
+            </>
           );
+          if(level===1){
+            return (<g opacity={opacity} transform={`translate(${x-14*s},${y-22*s}) scale(${s})`}>{shell(28,40,'#d1fae5')}</g>);
+          }
+          if(level===2){
+            return (<g opacity={opacity} transform={`translate(${x-16*s},${y-24*s}) scale(${s})`}>{shell(32,44,'#bbf7d0')}</g>);
+          }
+          return (<g opacity={opacity} transform={`translate(${x-18*s},${y-26*s}) scale(${s})`}>{shell(36,48,'#a7f3d0')}</g>);
         }
-        // Ruler / upgrades
+        // Ruler → Yardstick → Tape Measure
+        // Level affects look: longer, darker ticks; tape head
+        const tickCount = level===1?8 : level===2?10 : 10;
         return (
-          <g opacity={opacity} transform={`translate(${x-18*s},${y-6*s}) scale(${s})`}>
-            <rect x={0} y={0} width={36} height={12} rx={2} fill="#fde68a" stroke="#f59e0b"/>
-            {[...Array(8)].map((_,i)=><line key={i} x1={4+i*4} y1={2} x2={4+i*4} y2={i%2?6:10} stroke="#b45309" strokeWidth="1"/>)}
+          <g opacity={opacity} transform={`translate(${x-(level===3?10:18)*s},${y-6*s}) scale(${s})`}>
+            {level<3 ? (
+              <>
+                <rect x={0} y={0} width={level===2?40:36} height={12} rx={2} fill="#fde68a" stroke="#f59e0b"/>
+                {[...Array(tickCount)].map((_,i)=><line key={i} x1={4+i*4} y1={2} x2={4+i*4} y2={i%2?6:10} stroke="#b45309" strokeWidth="1"/>)}
+              </>
+            ):(
+              <>
+                <rect x={8} y={0} width={28} height={12} rx={2} fill="#fde68a" stroke="#f59e0b"/>
+                <rect x={0} y={0} width={10} height={12} rx={2} fill="#93c5fd" stroke="#1d4ed8"/>
+                {[...Array(7)].map((_,i)=><line key={i} x1={12+i*4} y1={2} x2={12+i*4} y2={i%2?6:10} stroke="#b45309" strokeWidth="1"/>)}
+              </>
+            )}
           </g>
         );
       }
 
+      // upgrade confirm modal
+      function UpgradeModal({ open, tower, onCancel, onConfirm }){
+        if(!open || !tower) return null;
+        const curr = baseTowerStats(tower.kind, tower.level);
+        const nextLevel = clamp(tower.level+1,1,3);
+        const next = baseTowerStats(tower.kind, nextLevel);
+        const cost = upgradeCost(tower.level);
+        const delta = {
+          range: Math.floor(next.range - curr.range),
+          dmg: next.dmg - curr.dmg,
+          rof: Math.max(0, curr.fireRate - next.fireRate)
+        };
+        return (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white w-[420px] rounded-2xl shadow-2xl p-4 border">
+              <h3 className="text-lg font-bold">Upgrade {curr.name} → {next.name}</h3>
+              <div className="mt-3 flex items-center gap-4">
+                <svg width="80" height="60"><g transform="translate(40,30)"><TowerSprite kind={tower.kind} level={tower.level} x={0} y={0} scale={1.2}/></g></svg>
+                <span className="text-2xl">→</span>
+                <svg width="80" height="60"><g transform="translate(40,30)"><TowerSprite kind={tower.kind} level={nextLevel} x={0} y={0} scale={1.2}/></g></svg>
+              </div>
+              <div className="mt-3 text-sm">
+                <div>Cost: <b>{cost}</b> Study Points</div>
+                <ul className="mt-2 list-disc ml-5">
+                  <li>Range: +{delta.range}</li>
+                  <li>Damage: +{delta.dmg}</li>
+                  <li>Faster rate of fire: −{delta.rof} ms</li>
+                </ul>
+              </div>
+              <div className="mt-4 flex justify-end gap-2">
+                <button className="px-3 py-2 rounded-lg bg-gray-200" onClick={onCancel}>Cancel</button>
+                <button className="px-3 py-2 rounded-lg bg-emerald-600 text-white" onClick={onConfirm}>Confirm Upgrade</button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
       function App(){
-        // STARTING COINS LOWERED HERE:
-        const [coins,setCoins]=useState(40);
+        // EXACTLY ENOUGH TO BUY A PENCIL:
+        const [coins,setCoins]=useState(20);
         const [lives,setLives]=useState(20);
         const [wave,setWave]=useState(1);
         const [inWave,setInWave]=useState(false);
 
-        const [speed,setSpeed]=useState(1); // 1 or 2 (2x speed toggle)
+        const [speed,setSpeed]=useState(1); // 1x, 2x, 3x
 
         const [towers,setTowers]=useState([]);
         const [enemies,setEnemies]=useState([]);
@@ -151,25 +239,26 @@
 
         const [selectedKind,setSelectedKind]=useState(null);
         const [drag,setDrag]=useState(null); // {kind,x,y,valid}
+        const [upgradeOpen,setUpgradeOpen]=useState(false);
+        const [upgradeTower,setUpgradeTower]=useState(null);
 
         const mapRef=useRef(null);
-        const pending=useRef(null);
 
-        // spawn waves (interval scales with speed)
+        // spawn waves (harder schedule + speed)
         useEffect(()=>{
           let timer;
           if(inWave){
-            let i=0; const schedule=[]; const count=10+wave*2;
+            let i=0; const schedule=[]; const count=12 + wave*2; // +2 baseline
             for(let k=0;k<count;k++){
               const r=Math.random(); let type=ENEMY_TYPES.HOMEWORK;
-              if(wave>=3 && r>0.7)  type=ENEMY_TYPES.QUIZ;
-              if(wave>=6 && r>0.85) type=ENEMY_TYPES.TEST;
-              if(wave%7===0 && k===count-1) type=ENEMY_TYPES.FINAL;
+              if(wave>=2 && r>0.6)  type=ENEMY_TYPES.QUIZ; // earlier quizzes
+              if(wave>=5 && r>0.8)  type=ENEMY_TYPES.TEST;
+              if(wave % 6 === 0 && k >= count-2) type=ENEMY_TYPES.FINAL; // bosses slightly more frequent & 2 at end
               schedule.push(type);
             }
-            const interval = 600 / speed; // faster spawns at 2x
+            const interval = 520 / speed; // tighter spawn
             timer=setInterval(()=>{
-              if(i>=schedule.length){ clearInterval(timer); setTimeout(()=>setInWave(false),1500); return; }
+              if(i>=schedule.length){ clearInterval(timer); setTimeout(()=>setInWave(false),1200); return; }
               const type=schedule[i++]; const st=enemyStats(type,wave);
               setEnemies(prev=>[...prev,{id:crypto.randomUUID(), t:0, hp:st.hp, type}]);
             }, interval);
@@ -183,19 +272,19 @@
           const step=(now)=>{
             const dt=(now-last)/1000; last=now;
 
-            // enemies move (speed multiplier)
+            // enemies move
             setEnemies(prev=>{
               const out=[];
               for(const e of prev){
                 const st=enemyStats(e.type,wave);
-                const tNext=e.t + st.speed*dt*0.12*speed; // move faster at 2x
+                const tNext=e.t + st.speed*dt*0.12*speed;
                 if(tNext>=1) setLives(L=>Math.max(0, L-(e.type===ENEMY_TYPES.FINAL?5:1)));
                 else out.push({...e,t:tNext});
               }
               return out;
             });
 
-            // towers fire (fireRate shrinks with speed)
+            // towers fire
             setTowers(prev=>{
               const nowMs=performance.now();
               const ens=enemies.map(e=>({...e,pos:pointAtT(PATH,e.t)}));
@@ -261,11 +350,11 @@
         },[enemies,wave,speed]);
 
         // wave advance
-        useEffect(()=>{ if(!inWave && enemies.length === 0){ setWave(w=>w+1); setCoins(c=>c+30);} },[inWave,enemies.length]);
+        useEffect(()=>{ if(!inWave && enemies.length === 0){ setWave(w=>w+1); setCoins(c=>c+28);} },[inWave,enemies.length]);
         useEffect(()=>{ if(lives<=0) alert("Class dismissed! The Exams reached your desk. Reload to try again."); },[lives]);
 
         function beginWave(){ if(!inWave) setInWave(true) }
-        function toggleSpeed(){ setSpeed(s=> s===1 ? 2 : 1); }
+        function cycleSpeed(){ setSpeed(s=> s===1 ? 2 : s===2 ? 3 : 1); }
 
         // drag & place
         function canPlaceAt(kind, x, y){
@@ -299,13 +388,21 @@
         }
         function cancelDrag(){ if(drag){ setDrag(null); setSelectedKind(null); } }
 
-        // upgrades (instant, no questions)
+        // upgrades (confirm first)
         function requestUpgrade(tower){
-          const cost=upgradeCost(tower.level);
           if(tower.level>=3) return;
-          if(coins<cost) return;
+          setUpgradeTower(tower);
+          setUpgradeOpen(true);
+        }
+        function confirmUpgrade(){
+          const t = upgradeTower;
+          if(!t){ setUpgradeOpen(false); return; }
+          const cost = upgradeCost(t.level);
+          if(coins < cost){ setUpgradeOpen(false); return; }
           setCoins(c=>c-cost);
-          setTowers(arr=>arr.map(t=> t.id===tower.id ? {...t, level: clamp(t.level+1,1,3)} : t));
+          setTowers(arr=>arr.map(x=> x.id===t.id ? {...x, level: clamp(x.level+1,1,3)} : x));
+          setUpgradeOpen(false);
+          setUpgradeTower(null);
         }
 
         const pathPolyline=useMemo(()=> PATH.map(p=>`${p.x},${p.y}`).join(" "), []);
@@ -314,7 +411,7 @@
           <div className="w-full min-h-screen text-gray-900 p-4">
             <div className="max-w-[1200px] mx-auto">
               <h1 className="text-2xl font-extrabold tracking-tight">📚 Classroom Defense — Math Game v2</h1>
-              <p className="text-sm text-gray-700">Drag to place towers. Click a tower to upgrade (no questions for now).</p>
+              <p className="text-sm text-gray-700">Start with just enough for a Pencil. Drag to place. Click a tower to upgrade (with confirmation).</p>
 
               <div className="mt-3 flex items-center gap-3 flex-wrap">
                 <div className="px-3 py-2 rounded-xl bg-white shadow border">💰 Study Points: <b>{formatCoins(coins)}</b></div>
@@ -327,7 +424,7 @@
                 </button>
 
                 <button className="px-4 py-2 rounded-xl shadow bg-indigo-600 hover:bg-indigo-700 text-white"
-                        onClick={toggleSpeed}>
+                        onClick={cycleSpeed}>
                   ⏩ Speed: {speed}x
                 </button>
               </div>
@@ -338,8 +435,8 @@
                   <button key={kind} onClick={()=>startDrag(kind)}
                           className={`border rounded-xl p-3 bg-white shadow hover:shadow-md transition ${selectedKind===kind?"ring-2 ring-blue-500":""}`}>
                     <div className="flex items-center gap-2">
-                      <svg width="28" height="28"><g transform="translate(14,14)"><TowerSprite kind={kind} x={0} y={0} scale={0.9}/></g></svg>
-                      <div className="font-bold">{kindLabel(kind,1)}</div>
+                      <svg width="28" height="28"><g transform="translate(14,14)"><TowerSprite kind={kind} level={1} x={0} y={0} scale={0.9}/></g></svg>
+                      <div className="font-bold">{baseTowerStats(kind,1).name}</div>
                     </div>
                     <div className="text-xs text-gray-600 mt-1">Cost: {BASE_COST[kind]}</div>
                     <div className="text-xs text-gray-500">
@@ -354,7 +451,8 @@
               <div className="mt-4 relative rounded-3xl border shadow overflow-hidden">
                 <svg ref={mapRef} width={MAP_W} height={MAP_H}
                      onMouseMove={onBoardMove} onClick={onBoardClick} onMouseLeave={cancelDrag}
-                     className="block cursor-crosshair">
+                     style={{cursor: drag ? (drag.valid ? 'copy' : 'not-allowed') : 'crosshair'}}
+                     className="block">
                   {/* Floor tiles */}
                   <defs>
                     <pattern id="tiles" width="24" height="24" patternUnits="userSpaceOnUse">
@@ -401,22 +499,30 @@
                   {/* Projectiles */}
                   {projectiles.map(p=> (<circle key={p.id} cx={p.x} cy={p.y} r="3" fill="#111827" />))}
 
-                  {/* Drag ghost & placement ring */}
+                  {/* Drag ghost, range ring, and cursor dot */}
                   {drag && (
                     <g pointerEvents="none">
                       <circle cx={drag.x} cy={drag.y} r={baseTowerStats(drag.kind,1).range}
                               fill="none" stroke={drag.valid?"#22c55e":"#ef4444"}
                               strokeDasharray="6 6" strokeWidth="2" opacity="0.7"/>
-                      <TowerSprite kind={drag.kind} x={drag.x} y={drag.y} opacity={0.6}/>
+                      <TowerSprite kind={drag.kind} level={1} x={drag.x} y={drag.y} opacity={0.6}/>
+                      <circle cx={drag.x} cy={drag.y} r="4" fill={drag.valid ? "#22c55e" : "#ef4444"} />
                     </g>
                   )}
                 </svg>
               </div>
 
               <div className="mt-3 text-xs text-gray-600">
-                Tip: Drag to place. Click a tower to upgrade. Use ⏩ to play at 2× speed.
+                Tip: Drag to place (green = valid, red = blocked). Click a tower to upgrade with confirmation. Use ⏩ to cycle 1×/2×/3×.
               </div>
             </div>
+
+            <UpgradeModal
+              open={upgradeOpen}
+              tower={upgradeTower}
+              onCancel={()=>{ setUpgradeOpen(false); setUpgradeTower(null); }}
+              onConfirm={confirmUpgrade}
+            />
           </div>
         );
       }
