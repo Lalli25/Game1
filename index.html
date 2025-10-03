@@ -28,6 +28,8 @@
         { x: 860, y: 360 }
       ];
 
+      const TOTAL_WAVES = 50;
+
       // helpers
       function lerp(a,b,t){return a+(b-a)*t}
       function distance(a,b){const dx=a.x-b.x, dy=a.y-b.y; return Math.hypot(dx,dy)}
@@ -45,27 +47,28 @@
         return pts[pts.length-1];
       }
 
-      // balance (harder)
-      function enemyStats(type,wave){
-        const s = 1 + wave*0.08; // was 0.06
+      // --- balance (harder without spawn lock) ---
+      // Faster HP growth and enemy counts; trimmed rewards; pricier upgrades.
+      function enemyStats(type,wave, endlessBoost=0){
+        const s = (1 + wave*0.09) * (1 + endlessBoost); // ramp
         switch(type){
-          case ENEMY_TYPES.HOMEWORK: return { hp:16*s, speed:0.054, reward:4 };
-          case ENEMY_TYPES.QUIZ:     return { hp:34*s, speed:0.042, reward:8 };
-          case ENEMY_TYPES.TEST:     return { hp:80*s, speed:0.034, reward:16 };
-          case ENEMY_TYPES.FINAL:    return { hp:300*s, speed:0.03,  reward:50 };
+          case ENEMY_TYPES.HOMEWORK: return { hp:18*s, speed:0.055, reward:3 };
+          case ENEMY_TYPES.QUIZ:     return { hp:36*s, speed:0.043, reward:7 };
+          case ENEMY_TYPES.TEST:     return { hp:85*s, speed:0.034, reward:14 };
+          case ENEMY_TYPES.FINAL:    return { hp:320*s, speed:0.030, reward:45 };
           default:                   return { hp:20, speed:0.04, reward:5 };
         }
       }
       function baseTowerStats(kind, level=1){
         const L=clamp(level,1,3);
-        if(kind===TOWER_TYPES.PENCIL)     return { range:120+12*L, dmg:6+2*L,  fireRate:600-30*L, name:["Pencil","Pen","Marker"][L-1] };
+        if(kind===TOWER_TYPES.PENCIL)     return { range:115+10*L, dmg:5+2*L,  fireRate:630-30*L, name:["Pencil","Pen","Marker"][L-1] }; // slight nerf
         if(kind===TOWER_TYPES.ERASER)     return { range:135+12*L, dmg:12+4*L, fireRate:880-40*L, name:["Eraser","Board Eraser","Giant Sponge"][L-1] };
-        if(kind===TOWER_TYPES.CALCULATOR) return { range:150+14*L, dmg:8+1*L,  fireRate:380-15*L, chain:2+(L-1), name:["Calculator","Sci Calc","Graphing Calc"][L-1] };
+        if(kind===TOWER_TYPES.CALCULATOR) return { range:150+14*L, dmg:8+1*L,  fireRate:400-15*L, chain:2+(L-1), name:["Calculator","Sci Calc","Graphing Calc"][L-1] };
         if(kind===TOWER_TYPES.RULER)      return { range:190+22*L, dmg:10+3*L, fireRate:760-60*L, pierce:1+L, name:["Ruler","Yardstick","Tape Measure"][L-1] };
         return { range:100, dmg:5, fireRate:800, name:"" };
       }
       const BASE_COST = { PENCIL:20, ERASER:35, CALCULATOR:45, RULER:60 };
-      function upgradeCost(level){ return 30 + level*35 }
+      function upgradeCost(level){ return 40 + level*45 } // more expensive
 
       // classroom decor
       function ClassroomDecor(){
@@ -90,10 +93,9 @@
         );
       }
 
-      // tower sprites (change by level)
+      // tower sprites (by level)
       function TowerSprite({ kind, level=1, x, y, scale=1, opacity=1 }){
         const s = scale;
-        // Pencil → Pen → Marker
         if(kind === TOWER_TYPES.PENCIL){
           if(level===1){ // Pencil
             return (
@@ -120,7 +122,6 @@
             </g>
           );
         }
-        // Eraser → Board Eraser → Giant Sponge
         if(kind === TOWER_TYPES.ERASER){
           if(level===1){
             return (
@@ -146,7 +147,6 @@
             </g>
           );
         }
-        // Calculator → Sci Calc → Graphing Calc
         if(kind === TOWER_TYPES.CALCULATOR){
           const shell = (w,h,screenColor='#d1fae5') => (
             <>
@@ -166,7 +166,6 @@
           return (<g opacity={opacity} transform={`translate(${x-18*s},${y-26*s}) scale(${s})`}>{shell(36,48,'#a7f3d0')}</g>);
         }
         // Ruler → Yardstick → Tape Measure
-        // Level affects look: longer, darker ticks; tape head
         const tickCount = level===1?8 : level===2?10 : 10;
         return (
           <g opacity={opacity} transform={`translate(${x-(level===3?10:18)*s},${y-6*s}) scale(${s})`}>
@@ -224,12 +223,29 @@
         );
       }
 
+      // win / endless modal
+      function WinModal({ open, onContinue }){
+        if(!open) return null;
+        return (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white w-[420px] rounded-2xl shadow-2xl p-5 border text-center">
+              <h3 className="text-2xl font-extrabold">You Beat All 50 Waves! 🎉</h3>
+              <p className="mt-2 text-gray-700">Want to keep going? Endless mode ramps difficulty every wave.</p>
+              <button className="mt-4 px-4 py-2 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700" onClick={onContinue}>
+                Continue — Endless Mode
+              </button>
+            </div>
+          </div>
+        );
+      }
+
       function App(){
-        // EXACTLY ENOUGH TO BUY A PENCIL:
+        // Start with exactly enough to buy a Pencil
         const [coins,setCoins]=useState(20);
         const [lives,setLives]=useState(20);
         const [wave,setWave]=useState(1);
         const [inWave,setInWave]=useState(false);
+        const [endlessBoost,setEndlessBoost]=useState(0); // grows after 50
 
         const [speed,setSpeed]=useState(1); // 1x, 2x, 3x
 
@@ -241,6 +257,7 @@
         const [drag,setDrag]=useState(null); // {kind,x,y,valid}
         const [upgradeOpen,setUpgradeOpen]=useState(false);
         const [upgradeTower,setUpgradeTower]=useState(null);
+        const [showWin,setShowWin]=useState(false);
 
         const mapRef=useRef(null);
 
@@ -248,23 +265,25 @@
         useEffect(()=>{
           let timer;
           if(inWave){
-            let i=0; const schedule=[]; const count=12 + wave*2; // +2 baseline
+            let i=0; const schedule=[];
+            const countBase = 10 + wave*3; // more creeps per wave
+            const count = Math.min(40, countBase); // cap to avoid huge batches
             for(let k=0;k<count;k++){
               const r=Math.random(); let type=ENEMY_TYPES.HOMEWORK;
-              if(wave>=2 && r>0.6)  type=ENEMY_TYPES.QUIZ; // earlier quizzes
-              if(wave>=5 && r>0.8)  type=ENEMY_TYPES.TEST;
-              if(wave % 6 === 0 && k >= count-2) type=ENEMY_TYPES.FINAL; // bosses slightly more frequent & 2 at end
+              if(wave>=2 && r>0.55)  type=ENEMY_TYPES.QUIZ;     // earlier quizzes
+              if(wave>=5 && r>0.78)  type=ENEMY_TYPES.TEST;
+              if(wave % 6 === 0 && k >= count-2) type=ENEMY_TYPES.FINAL; // 2 bosses at end of 6th waves
               schedule.push(type);
             }
-            const interval = 520 / speed; // tighter spawn
+            const interval = clamp(520 - wave*6, 260, 520) / speed; // tighter spawns over time
             timer=setInterval(()=>{
-              if(i>=schedule.length){ clearInterval(timer); setTimeout(()=>setInWave(false),1200); return; }
-              const type=schedule[i++]; const st=enemyStats(type,wave);
+              if(i>=schedule.length){ clearInterval(timer); setTimeout(()=>setInWave(false),1000); return; }
+              const type=schedule[i++]; const st=enemyStats(type,wave,endlessBoost);
               setEnemies(prev=>[...prev,{id:crypto.randomUUID(), t:0, hp:st.hp, type}]);
             }, interval);
           }
           return ()=>clearInterval(timer);
-        },[inWave,wave,speed]);
+        },[inWave,wave,speed,endlessBoost]);
 
         // game loop
         useEffect(()=>{
@@ -276,7 +295,7 @@
             setEnemies(prev=>{
               const out=[];
               for(const e of prev){
-                const st=enemyStats(e.type,wave);
+                const st=enemyStats(e.type,wave,endlessBoost);
                 const tNext=e.t + st.speed*dt*0.12*speed;
                 if(tNext>=1) setLives(L=>Math.max(0, L-(e.type===ENEMY_TYPES.FINAL?5:1)));
                 else out.push({...e,t:tNext});
@@ -284,7 +303,7 @@
               return out;
             });
 
-            // towers fire
+            // towers fire (NOTE: no spawn immunity — can target at t≈0)
             setTowers(prev=>{
               const nowMs=performance.now();
               const ens=enemies.map(e=>({...e,pos:pointAtT(PATH,e.t)}));
@@ -297,6 +316,7 @@
                   for(const e of ens){
                     const pos=e.pos;
                     if(distance({x:tw.x,y:tw.y},pos)<=st.range){
+                      // prioritize furthest-along enemy
                       if(e.t>maxT){ maxT=e.t; target=e; }
                     }
                   }
@@ -325,7 +345,7 @@
                     const copy=[...arr]; const idx=copy.findIndex(x=>x.id===eHit.id);
                     if(idx>=0){
                       const type=copy[idx].type, newHp=copy[idx].hp - p.dmg;
-                      if(newHp<=0){ const st=enemyStats(type,wave); copy.splice(idx,1); setCoins(c=>c+st.reward); }
+                      if(newHp<=0){ const st=enemyStats(type,wave,endlessBoost); copy.splice(idx,1); setCoins(c=>c+st.reward); }
                       else copy[idx]={...copy[idx], hp:newHp};
                     }
                     return copy;
@@ -347,10 +367,19 @@
           };
           raf=requestAnimationFrame(step);
           return ()=>cancelAnimationFrame(raf);
-        },[enemies,wave,speed]);
+        },[enemies,wave,speed,endlessBoost]);
 
-        // wave advance
-        useEffect(()=>{ if(!inWave && enemies.length === 0){ setWave(w=>w+1); setCoins(c=>c+28);} },[inWave,enemies.length]);
+        // wave advance and win → endless
+        useEffect(()=>{
+          if(!inWave && enemies.length===0){
+            if(wave < TOTAL_WAVES){
+              setWave(w=>w+1);
+              setCoins(c=>c+26); // modest wave bonus
+            } else if(wave === TOTAL_WAVES){
+              setShowWin(true);
+            }
+          }
+        },[inWave,enemies.length,wave]);
         useEffect(()=>{ if(lives<=0) alert("Class dismissed! The Exams reached your desk. Reload to try again."); },[lives]);
 
         function beginWave(){ if(!inWave) setInWave(true) }
@@ -405,18 +434,25 @@
           setUpgradeTower(null);
         }
 
+        function continueEndless(){
+          setShowWin(false);
+          setWave(w=>w+1);              // wave 51, etc.
+          setEndlessBoost(b=> b + 0.08); // extra 8% global hp scaling per post-50 wave
+          setInWave(true);
+        }
+
         const pathPolyline=useMemo(()=> PATH.map(p=>`${p.x},${p.y}`).join(" "), []);
 
         return (
           <div className="w-full min-h-screen text-gray-900 p-4">
             <div className="max-w-[1200px] mx-auto">
               <h1 className="text-2xl font-extrabold tracking-tight">📚 Classroom Defense — Math Game v2</h1>
-              <p className="text-sm text-gray-700">Start with just enough for a Pencil. Drag to place. Click a tower to upgrade (with confirmation).</p>
+              <p className="text-sm text-gray-700">Drag to place. Click a tower to upgrade (with confirmation). Shooting from the start enabled.</p>
 
               <div className="mt-3 flex items-center gap-3 flex-wrap">
                 <div className="px-3 py-2 rounded-xl bg-white shadow border">💰 Study Points: <b>{formatCoins(coins)}</b></div>
                 <div className="px-3 py-2 rounded-xl bg-white shadow border">❤️ Lives: <b>{lives}</b></div>
-                <div className="px-3 py-2 rounded-xl bg-white shadow border">📈 Wave: <b>{wave}</b></div>
+                <div className="px-3 py-2 rounded-xl bg-white shadow border">📈 Wave: <b>{wave}{wave>TOTAL_WAVES?" (Endless)":""}</b></div>
 
                 <button className={`px-4 py-2 rounded-xl shadow text-white ${inWave?"bg-gray-400":"bg-emerald-600 hover:bg-emerald-700"}`}
                         onClick={beginWave} disabled={inWave}>
@@ -449,7 +485,8 @@
 
               {/* Board */}
               <div className="mt-4 relative rounded-3xl border shadow overflow-hidden">
-                <svg ref={mapRef} width={MAP_W} height={MAP_H}
+                <svg width={MAP_W} height={MAP_H}
+                     ref={mapRef}
                      onMouseMove={onBoardMove} onClick={onBoardClick} onMouseLeave={cancelDrag}
                      style={{cursor: drag ? (drag.valid ? 'copy' : 'not-allowed') : 'crosshair'}}
                      className="block">
@@ -491,7 +528,7 @@
                       <g key={e.id}>
                         <text x={pos.x} y={pos.y} fontSize="20" textAnchor="middle" dominantBaseline="middle">{emoji}</text>
                         <rect x={pos.x-16} y={pos.y-24} width="32" height="4" fill="#fee2e2" rx="2"/>
-                        <rect x={pos.x-16} y={pos.y-24} width={clamp((e.hp/enemyStats(e.type,wave).hp)*32,0,32)} height="4" fill="#ef4444" rx="2"/>
+                        <rect x={pos.x-16} y={pos.y-24} width={clamp((e.hp/enemyStats(e.type,wave,endlessBoost).hp)*32,0,32)} height="4" fill="#ef4444" rx="2"/>
                       </g>
                     );
                   })}
@@ -499,7 +536,7 @@
                   {/* Projectiles */}
                   {projectiles.map(p=> (<circle key={p.id} cx={p.x} cy={p.y} r="3" fill="#111827" />))}
 
-                  {/* Drag ghost, range ring, and cursor dot */}
+                  {/* Drag ghost & placement ring */}
                   {drag && (
                     <g pointerEvents="none">
                       <circle cx={drag.x} cy={drag.y} r={baseTowerStats(drag.kind,1).range}
@@ -513,7 +550,7 @@
               </div>
 
               <div className="mt-3 text-xs text-gray-600">
-                Tip: Drag to place (green = valid, red = blocked). Click a tower to upgrade with confirmation. Use ⏩ to cycle 1×/2×/3×.
+                Tip: Green = valid placement, red = blocked. Use ⏩ to cycle 1×/2×/3×.
               </div>
             </div>
 
@@ -522,6 +559,10 @@
               tower={upgradeTower}
               onCancel={()=>{ setUpgradeOpen(false); setUpgradeTower(null); }}
               onConfirm={confirmUpgrade}
+            />
+            <WinModal
+              open={showWin}
+              onContinue={continueEndless}
             />
           </div>
         );
