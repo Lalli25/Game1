@@ -1,629 +1,600 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Classroom Defense — Math Game v2</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- React 18 UMD -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <!-- Babel for JSX-in-browser -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <style>
-      html,body{height:100%} body{background:#eef2ff}
-      .errbox{position:fixed;bottom:12px;left:12px;right:12px;background:#fee2e2;color:#7f1d1d;border:1px solid #ef4444;border-radius:12px;padding:10px;font:14px/1.3 system-ui,Segoe UI,Roboto}
-      .errbox pre{white-space:pre-wrap;margin:6px 0 0}
-    </style>
-  </head>
-  <body>
-    <noscript>This game needs JavaScript enabled.</noscript>
-    <div id="root"></div>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Classroom Defense — Math Game v2 (No-Framework)</title>
+<style>
+  :root { --bg:#eef2ff; --card:#ffffff; --ink:#111827; --muted:#64748b; --border:#cbd5e1; --accent:#4f46e5; --accent2:#10b981; --warn:#ef4444; --ok:#22c55e; }
+  html,body{height:100%} body{margin:0;font:14px/1.4 system-ui,Segoe UI,Roboto,Arial;background:var(--bg);color:#111}
+  .wrap{max-width:1200px;margin:0 auto;padding:16px}
+  h1{margin:0 0 4px;font-size:22px;font-weight:800}
+  .bar{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+  .pill{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:8px 12px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .btn{cursor:pointer;border:none;border-radius:12px;padding:8px 14px;color:#fff;box-shadow:0 1px 2px rgba(0,0,0,.12)}
+  .btn.green{background:#059669} .btn.green:disabled{background:#9ca3af;cursor:not-allowed}
+  .btn.indigo{background:#4f46e5}
+  .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  @media(min-width:640px){.grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px;box-shadow:0 1px 2px rgba(0,0,0,.06);cursor:pointer}
+  .build-name{font-weight:700}
+  .hint{font-size:11px;color:#065f46;margin-top:4px}
+  .board{margin-top:12px;border:1px solid var(--border);border-radius:16px;box-shadow:0 2px 6px rgba(0,0,0,.06);overflow:hidden;position:relative}
+  svg{display:block}
 
-    <!-- Crash overlay (shows errors instead of blank page) -->
-    <script>
-      (function(){
-        function showErr(title, detail){
-          var box=document.createElement('div'); box.className='errbox';
-          box.innerHTML='<b>'+title+'</b><pre>'+detail+'</pre>';
-          document.body.appendChild(box);
-        }
-        window.addEventListener('error', function(e){
-          try{ showErr('Script error:', (e.message||'') + '\n' + (e.filename||'') + ':' + (e.lineno||'') ); }catch(_){}
-        });
-        window.addEventListener('unhandledrejection', function(e){
-          try{ showErr('Unhandled promise rejection:', String(e.reason)); }catch(_){}
-        });
-        // Polyfill randomUUID for older browsers
-        if (!window.crypto) window.crypto = {};
-        if (typeof window.crypto.randomUUID !== 'function') {
-          window.crypto.randomUUID = function(){
-            // lightweight RFC4122-ish fallback
-            const s = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c=>{
-              const r = Math.random()*16|0, v = c==='x'? r : (r&0x3|0x8);
-              return v.toString(16);
-            });
-            return s;
-          };
-        }
-      })();
-    </script>
+  /* modal */
+  .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:50}
+  .modal{background:#fff;width:420px;max-width:calc(100% - 24px);border-radius:16px;border:1px solid var(--border);box-shadow:0 10px 30px rgba(0,0,0,.2);padding:16px}
+  .modal h3{margin:0 0 8px;font-size:18px;font-weight:800}
+  .modal .row{display:flex;gap:12px;align-items:center}
+  .modal .actions{margin-top:12px;display:flex;gap:8px;justify-content:flex-end}
+  .btn.gray{background:#e5e7eb;color:#111}
+  .btn.em{background:#059669}
+  .small{font-size:12px;color:#374151}
 
-    <script type="text/babel">
-      const { useEffect, useMemo, useRef, useState } = React;
+  /* error box (if anything ever throws) */
+  .err{position:fixed;left:12px;right:12px;bottom:12px;background:#fee2e2;border:1px solid #ef4444;color:#7f1d1d;border-radius:12px;padding:10px;z-index:999}
+  .err pre{white-space:pre-wrap;margin:6px 0 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>📚 Classroom Defense — Math Game v2</h1>
+  <p class="small">Drag to place. Click a tower to upgrade (with confirmation). Shooting from the start is enabled.</p>
 
-      // --- constants ---
-      const TOWER_TYPES = { PENCIL:"PENCIL", ERASER:"ERASER", CALCULATOR:"CALCULATOR", RULER:"RULER" };
-      const ENEMY_TYPES = { HOMEWORK:"HOMEWORK", QUIZ:"QUIZ", TEST:"TEST", FINAL:"FINAL" };
+  <div class="bar">
+    <div class="pill">💰 Study Points: <b id="coins">0</b></div>
+    <div class="pill">❤️ Lives: <b id="lives">0</b></div>
+    <div class="pill">📈 Wave: <b id="wave">1</b></div>
+    <button id="startBtn" class="btn green">Start Wave</button>
+    <button id="speedBtn" class="btn indigo">⏩ Speed: <span id="speedTxt">1x</span></button>
+  </div>
 
-      const MAP_W = 900, MAP_H = 540;
-      const PATH = [
-        { x: 40, y: 100 }, { x: 220, y: 100 }, { x: 220, y: 60 },  { x: 360, y: 60 },
-        { x: 360, y: 180 }, { x: 520, y: 180 }, { x: 520, y: 320 }, { x: 320, y: 320 },
-        { x: 320, y: 420 }, { x: 640, y: 420 }, { x: 640, y: 280 }, { x: 800, y: 280 },
-        { x: 860, y: 360 }
-      ];
+  <!-- Build bar -->
+  <div class="grid" id="buildBar"></div>
 
-      const TOTAL_WAVES = 50;
+  <!-- Game board -->
+  <div class="board">
+    <svg id="game" width="900" height="540"></svg>
+  </div>
 
-      // helpers
-      function lerp(a,b,t){return a+(b-a)*t}
-      function distance(a,b){const dx=a.x-b.x, dy=a.y-b.y; return Math.hypot(dx,dy)}
-      function clamp(n,lo,hi){return Math.max(lo, Math.min(hi,n))}
-      function formatCoins(n){return Math.floor(n)}
-      function pathLength(pts){let L=0; for(let i=0;i<pts.length-1;i++) L+=distance(pts[i],pts[i+1]); return L}
-      const PATH_LENGTH = pathLength(PATH);
-      function pointAtT(pts,t){
-        let target=t*PATH_LENGTH, acc=0;
-        for(let i=0;i<pts.length-1;i++){
-          const a=pts[i], b=pts[i+1], seg=distance(a,b);
-          if(acc+seg>=target){ const local=(target-acc)/seg; return {x: lerp(a.x,b.x,local), y: lerp(a.y,b.y,local)} }
-          acc+=seg;
-        }
-        return pts[pts.length-1];
+  <div class="small" style="margin-top:6px">Tip: Green = valid placement, red = blocked. Use ⏩ to cycle 1×/2×/3×.</div>
+</div>
+
+<!-- Upgrade modal -->
+<div class="modal-backdrop" id="upgradeBackdrop">
+  <div class="modal">
+    <h3 id="upTitle">Upgrade</h3>
+    <div class="row" style="margin:6px 0 8px">
+      <svg width="90" height="60"><g transform="translate(45,30)" id="upCurr"></g></svg>
+      <div style="font-size:22px">→</div>
+      <svg width="90" height="60"><g transform="translate(45,30)" id="upNext"></g></svg>
+    </div>
+    <div class="small" id="upDesc"></div>
+    <div class="actions">
+      <button class="btn gray" id="upCancel">Cancel</button>
+      <button class="btn em" id="upConfirm">Confirm Upgrade</button>
+    </div>
+  </div>
+</div>
+
+<!-- Win modal -->
+<div class="modal-backdrop" id="winBackdrop">
+  <div class="modal" style="text-align:center">
+    <h3>You Beat All 50 Waves! 🎉</h3>
+    <p class="small">Want to keep going? Endless mode ramps difficulty every wave.</p>
+    <div class="actions" style="justify-content:center">
+      <button class="btn indigo" id="continueBtn">Continue — Endless Mode</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// Minimal error overlay if something unexpected happens
+function showErrBox(title, detail){
+  const box=document.createElement('div'); box.className='err';
+  box.innerHTML='<b>'+title+'</b><pre>'+detail+'</pre>';
+  document.body.appendChild(box);
+}
+window.addEventListener('unhandledrejection', e=>showErrBox('Promise error', String(e.reason)));
+window.addEventListener('error', e=>showErrBox('Script error', (e.error && (e.error.stack||e.error.message)) || (e.message||'unknown')));
+
+// randomUUID polyfill
+if(!window.crypto) window.crypto = {};
+if(typeof window.crypto.randomUUID!=='function'){
+  window.crypto.randomUUID = function(){
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{
+      const r=Math.random()*16|0, v=c==='x'?r:(r&0x3|0x8); return v.toString(16);
+    });
+  };
+}
+
+// ====== GAME STATE ======
+const MAP_W=900, MAP_H=540;
+const PATH=[{x:40,y:100},{x:220,y:100},{x:220,y:60},{x:360,y:60},{x:360,y:180},{x:520,y:180},{x:520,y:320},{x:320,y:320},{x:320,y:420},{x:640,y:420},{x:640,y:280},{x:800,y:280},{x:860,y:360}];
+const TOTAL_WAVES=50;
+
+const TOWER={PENCIL:'PENCIL',ERASER:'ERASER',CALCULATOR:'CALC',RULER:'RULER'};
+const ENEMY={HOMEWORK:'HW',QUIZ:'QZ',TEST:'TS',FINAL:'FN'};
+
+const BASE_COST={PENCIL:20,ERASER:35,CALC:45,RULER:60};
+const upgradeCost = lvl => 40 + lvl*45;
+
+function clamp(n,a,b){return Math.max(a,Math.min(b,n))}
+function dist(a,b){const dx=a.x-b.x, dy=a.y-b.y; return Math.hypot(dx,dy)}
+function lerp(a,b,t){return a+(b-a)*t}
+function pathLength(pts){let L=0;for(let i=0;i<pts.length-1;i++)L+=dist(pts[i],pts[i+1]);return L}
+const PATH_LEN=pathLength(PATH);
+function pointAtT(t){ // 0..1
+  let target=t*PATH_LEN, acc=0;
+  for(let i=0;i<PATH.length-1;i++){
+    const A=PATH[i], B=PATH[i+1], seg=dist(A,B);
+    if(acc+seg>=target){ const u=(target-acc)/seg; return {x:lerp(A.x,B.x,u),y:lerp(A.y,B.y,u)} }
+    acc+=seg;
+  }
+  return PATH[PATH.length-1];
+}
+
+function enemyStats(type,wave,boost=0){
+  const s=(1+wave*0.09)*(1+boost);
+  if(type===ENEMY.HOMEWORK) return {hp:18*s, speed:0.055, reward:3};
+  if(type===ENEMY.QUIZ)     return {hp:36*s, speed:0.043, reward:7};
+  if(type===ENEMY.TEST)     return {hp:85*s, speed:0.034, reward:14};
+  if(type===ENEMY.FINAL)    return {hp:320*s, speed:0.030, reward:45};
+  return {hp:20,speed:0.04,reward:5};
+}
+function towerStats(kind,level=1){
+  const L=clamp(level,1,3);
+  if(kind===TOWER.PENCIL) return {range:115+10*L, dmg:5+2*L, fire:630-30*L, name:['Pencil','Pen','Marker'][L-1]};
+  if(kind===TOWER.ERASER) return {range:135+12*L, dmg:12+4*L, fire:880-40*L, name:['Eraser','Board Eraser','Giant Sponge'][L-1]};
+  if(kind===TOWER.CALCULATOR) return {range:150+14*L,dmg:8+1*L,fire:400-15*L,chain:2+(L-1),name:['Calculator','Sci Calc','Graphing Calc'][L-1]};
+  if(kind===TOWER.RULER) return {range:190+22*L,dmg:10+3*L,fire:760-60*L,pierce:1+L,name:['Ruler','Yardstick','Tape Measure'][L-1]};
+  return {range:100,dmg:5,fire:800,name:'?'};
+}
+
+// ====== DOM ======
+const coinsEl=document.getElementById('coins');
+const livesEl=document.getElementById('lives');
+const waveEl=document.getElementById('wave');
+const startBtn=document.getElementById('startBtn');
+const speedBtn=document.getElementById('speedBtn');
+const speedTxt=document.getElementById('speedTxt');
+const buildBar=document.getElementById('buildBar');
+const svg=document.getElementById('game');
+
+const upBackdrop=document.getElementById('upgradeBackdrop');
+const upTitle=document.getElementById('upTitle');
+const upDesc=document.getElementById('upDesc');
+const upCurr=document.getElementById('upCurr');
+const upNext=document.getElementById('upNext');
+const upCancel=document.getElementById('upCancel');
+const upConfirm=document.getElementById('upConfirm');
+
+const winBackdrop=document.getElementById('winBackdrop');
+const continueBtn=document.getElementById('continueBtn');
+
+// ====== SVG helpers ======
+function svgEl(tag, attrs={}, parent){
+  const el=document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for(const k in attrs){ el.setAttribute(k, attrs[k]); }
+  if(parent) parent.appendChild(el);
+  return el;
+}
+
+// Background & path
+function drawBoardStatic(){
+  svg.innerHTML='';
+  // floor pattern
+  const defs=svgEl('defs',{},svg);
+  const pat=svgEl('pattern',{id:'tiles',width:24,height:24,patternUnits:'userSpaceOnUse'},defs);
+  svgEl('rect',{width:24,height:24,fill:'#fafafa'},pat);
+  svgEl('path',{d:'M 0 24 L 24 0',stroke:'#f1f5f9','stroke-width':1},pat);
+  svgEl('rect',{x:0,y:0,width:MAP_W,height:MAP_H,fill:'url(#tiles)'},svg);
+
+  // decor (lockers)
+  for(let i=0;i<6;i++){
+    svgEl('rect',{x:0,y:80+i*70,width:28,height:56,rx:4,fill:'#3b82f6',stroke:'#1d4ed8','stroke-width':1},svg);
+  }
+  // desks
+  const desks=[{x:260,y:120},{x:420,y:120},{x:580,y:120},{x:260,y:260},{x:420,y:260},{x:580,y:260},{x:260,y:400},{x:420,y:400},{x:700,y:360}];
+  desks.forEach(d=>{
+    svgEl('rect',{x:d.x,y:d.y,width:70,height:40,rx:6,fill:'#f1f5f9',stroke:'#94a3b8'},svg);
+    svgEl('circle',{cx:d.x+10,cy:d.y+36,r:3,fill:'#64748b'},svg);
+  });
+  // title board
+  svgEl('rect',{x:40,y:10,width:300,height:36,rx:6,fill:'#083344',stroke:'#052e2b','stroke-width':2},svg);
+  svgEl('text',{x:190,y:34,'text-anchor':'middle','font-size':16,fill:'#bbf7d0'},svg).textContent='Room 207 — Geometry';
+
+  // path
+  const pts=PATH.map(p=>`${p.x},${p.y}`).join(' ');
+  svgEl('polyline',{points:pts,fill:'none',stroke:'#cbd5e1','stroke-width':30,'stroke-linejoin':'round','stroke-linecap':'round'},svg);
+  svgEl('polyline',{points:pts,fill:'none',stroke:'#64748b','stroke-width':6,'stroke-linejoin':'round','stroke-linecap':'round'},svg);
+
+  // base desk
+  svgEl('rect',{x:820,y:330,width:64,height:64,rx:12,fill:'#fff7ed',stroke:'#fb923c','stroke-width':3},svg);
+  svgEl('text',{x:852,y:364,'text-anchor':'middle','font-size':12},svg).textContent='Desk';
+}
+drawBoardStatic();
+
+// ====== Stateful entities ======
+let coins=20, lives=20, wave=1, inWave=false, endlessBoost=0, speed=1;
+let started=false;
+
+let towers=[];   // {id,x,y,kind,level,lastShot}
+let enemies=[];  // {id,t,type,hp}
+let projs=[];    // {id,x,y,vx,vy,dmg,pierce,chain}
+
+function syncUI(){
+  coinsEl.textContent=Math.floor(coins);
+  livesEl.textContent=lives;
+  waveEl.textContent = wave + (wave>TOTAL_WAVES ? ' (Endless)' : '');
+  speedTxt.textContent = speed+'x';
+  startBtn.disabled = inWave;
+  startBtn.textContent = inWave ? 'Wave Running…' : 'Start Wave';
+}
+syncUI();
+
+// ====== Build bar ======
+const BUILD_TYPES=[TOWER.PENCIL,TOWER.ERASER,TOWER.CALCULATOR,TOWER.RULER];
+function typeName(t){ return towerStats(t,1).name; }
+function makeBuildCard(kind){
+  const card=document.createElement('div'); card.className='card';
+  const row=document.createElement('div'); row.style.display='flex'; row.style.alignItems='center'; row.style.gap='8px';
+  const icon=document.createElementNS('http://www.w3.org/2000/svg','svg'); icon.setAttribute('width','28'); icon.setAttribute('height','28');
+  const g=document.createElementNS('http://www.w3.org/2000/svg','g'); g.setAttribute('transform','translate(14,14)');
+  icon.appendChild(g);
+  drawTowerSprite(g, kind, 1, 0,0,0.9,1);
+
+  const name=document.createElement('div'); name.className='build-name'; name.textContent=typeName(kind);
+  row.appendChild(icon); row.appendChild(name); card.appendChild(row);
+
+  const cost=document.createElement('div'); cost.className='small'; cost.style.marginTop='4px'; cost.textContent='Cost: '+BASE_COST[kind];
+  const stats=document.createElement('div'); stats.className='small'; stats.style.color='#6b7280';
+  const s=towerStats(kind,1);
+  stats.textContent=`Rng ${Math.floor(s.range)} / Dmg ${s.dmg} / ROF ${Math.max(200,s.fire)}ms`;
+  const hint=document.createElement('div'); hint.className='hint'; hint.textContent='Drag onto board to place';
+  card.appendChild(cost); card.appendChild(stats); card.appendChild(hint);
+
+  // drag handling (simple: click to arm drag, move on board)
+  card.addEventListener('mousedown', ()=> startDrag(kind));
+  return card;
+}
+function renderBuildBar(){
+  buildBar.innerHTML='';
+  BUILD_TYPES.forEach(k=> buildBar.appendChild(makeBuildCard(k)));
+}
+renderBuildBar();
+
+// ====== Drag & placement ======
+let drag = null; // {kind,x,y,valid}
+function canPlaceAt(kind,x,y){
+  if(x<24||x>MAP_W-24||y<24||y>MAP_H-24) return false;
+  // not too close to path
+  for(let i=0;i<PATH.length-1;i++){
+    const A=PATH[i],B=PATH[i+1], ABx=B.x-A.x, ABy=B.y-A.y;
+    const t=clamp(((x-A.x)*ABx+(y-A.y)*ABy)/(ABx*ABx+ABy*ABy),0,1);
+    const proj={x:A.x+ABx*t,y:A.y+ABy*t};
+    if(dist({x,y},proj)<40) return false;
+  }
+  for(const t of towers){ if(dist({x,y},{x:t.x,y:t.y})<34) return false; }
+  return true;
+}
+function startDrag(kind){ drag={kind,x:MAP_W/2,y:MAP_H/2,valid:false}; drawScene(); }
+svg.addEventListener('mousemove', e=>{
+  if(!drag) return;
+  const rect=svg.getBoundingClientRect();
+  const x=e.clientX-rect.left, y=e.clientY-rect.top;
+  drag.x=x; drag.y=y; drag.valid = canPlaceAt(drag.kind,x,y) && coins>=BASE_COST[drag.kind];
+  svg.style.cursor = drag.valid ? 'copy' : 'not-allowed';
+  drawScene();
+});
+svg.addEventListener('mouseleave', ()=>{ if(drag){ drag=null; svg.style.cursor='crosshair'; drawScene(); }});
+svg.addEventListener('click', ()=>{
+  if(!drag) return;
+  if(!drag.valid) return;
+  const cost=BASE_COST[drag.kind]; if(coins<cost) return;
+  coins-=cost;
+  towers.push({id:crypto.randomUUID(),x:drag.x,y:drag.y,kind:drag.kind,level:1,lastShot:0});
+  drag=null; svg.style.cursor='crosshair'; syncUI(); drawScene();
+});
+
+// ====== Upgrade modal logic ======
+let pendingUpgrade=null; // tower object ref
+function openUpgradeModal(t){
+  if(t.level>=3) return;
+  pendingUpgrade=t;
+  const curr=towerStats(t.kind,t.level);
+  const next=towerStats(t.kind, clamp(t.level+1,1,3));
+  upTitle.textContent = `Upgrade ${curr.name} → ${next.name}`;
+  upDesc.innerHTML = `Cost: <b>${upgradeCost(t.level)}</b> Study Points
+    <ul style="margin:6px 0 0 16px">
+      <li>Range: +${Math.floor(next.range-curr.range)}</li>
+      <li>Damage: +${next.dmg-curr.dmg}</li>
+      <li>Faster rate of fire: −${Math.max(0,curr.fire-next.fire)} ms</li>
+    </ul>`;
+  upCurr.innerHTML=''; upNext.innerHTML='';
+  drawTowerSprite(upCurr, t.kind, t.level, 0,0,1.2,1);
+  drawTowerSprite(upNext, t.kind, clamp(t.level+1,1,3), 0,0,1.2,1);
+  upBackdrop.style.display='flex';
+}
+upCancel.onclick=()=>{ upBackdrop.style.display='none'; pendingUpgrade=null; };
+upConfirm.onclick=()=>{
+  if(!pendingUpgrade) return;
+  const t=pendingUpgrade;
+  const cost=upgradeCost(t.level);
+  if(coins>=cost){
+    coins-=cost;
+    t.level=clamp(t.level+1,1,3);
+    syncUI(); drawScene();
+  }
+  upBackdrop.style.display='none';
+  pendingUpgrade=null;
+};
+
+// ====== Win modal ======
+continueBtn.onclick=()=>{
+  winBackdrop.style.display='none';
+  wave+=1; endlessBoost+=0.08; started=true; inWave=true; spawnWave();
+  syncUI();
+};
+
+// ====== Tower sprite drawing (SVG) ======
+function drawTowerSprite(g, kind, level, cx, cy, scale=1, opacity=1){
+  function set(o){ for(const k in o) el.setAttribute(k,o[k]); }
+  function rect(x,y,w,h,rx,fill,stroke,sw){
+    const el=svgEl('rect',{x:x,y:y,width:w,height:h,rx:rx||0,fill,stroke:stroke||'none','stroke-width':sw||1},g);
+    return el;
+  }
+  function line(x1,y1,x2,y2,stroke,sw){
+    return svgEl('line',{x1,y1,x2,y2,stroke,'stroke-width':sw||1},g);
+  }
+  const base = document.createElementNS('http://www.w3.org/2000/svg','g');
+  base.setAttribute('opacity',opacity);
+  base.setAttribute('transform',`translate(${cx},${cy}) scale(${scale})`);
+  g.appendChild(base);
+
+  if(kind===TOWER.PENCIL){
+    if(level===1){
+      rect(-10,-6,20,12,2,'#f59e0b','#92400e',1.2);
+      const tip=svgEl('polygon',{points:'10,-6 18,0 10,6',fill:'#fde68a',stroke:'#92400e'},base);
+      const lead=svgEl('polygon',{points:'18,0 20,0 18,-1',fill:'#111'},base);
+      return;
+    }
+    if(level===2){
+      rect(-14,-4,28,8,4,'#2563eb','#1e40af',1.2);
+      rect(10,-4,8,8,1,'#93c5fd','#1e40af',1);
+      return;
+    }
+    rect(-16,-6,32,12,4,'#111827','#334155',1.2);
+    rect(-14,-4,8,8,2,'#ef4444','none',1);
+    return;
+  }
+  if(kind===TOWER.ERASER){
+    if(level===1){
+      rect(-14,-10,28,20,6,'#fecdd3','#fb7185',1.2);
+      rect(-4,-10,18,20,6,'#fdf2f8','#f472b6',1.2);
+      return;
+    }
+    if(level===2){
+      rect(-18,-8,36,16,4,'#0ea5e9','#0369a1',1.2);
+      rect(-16,6,32,4,2,'#1f2937','none',1);
+      return;
+    }
+    rect(-16,-10,32,20,6,'#fde68a','#f59e0b',1.2);
+    ['-10,-6','-4,2','4,-2','10,4'].forEach(p=>{
+      const [x,y]=p.split(',').map(Number); svgEl('circle',{cx:x,cy:y,r:1.5,fill:'#f59e0b'},base);
+    });
+    return;
+  }
+  if(kind===TOWER.CALCULATOR){
+    function shell(w,h,screen){ rect(-w/2,-h/2,w,h,4,'#e5e7eb','#9ca3af',1.2);
+      rect(-w/2+4,-h/2+4,w-8,10,2,screen,'#10b981',1);
+      for(let i=0;i<8;i++){ const r=(i/4)|0, c=i%4; rect(-w/2+4+c*6,-h/2+18+r*6,5,5,1,'#fff','#9ca3af',1); }
+    }
+    if(level===1){ shell(28,40,'#d1fae5'); return; }
+    if(level===2){ shell(32,44,'#bbf7d0'); return; }
+    shell(36,48,'#a7f3d0'); return;
+  }
+  // RULER / YARDSTICK / TAPE
+  const isTape = (level===3);
+  if(!isTape){
+    rect(-18,-6, level===2?40:36,12,2,'#fde68a','#f59e0b',1.2);
+    const ticks=level===1?8:10;
+    for(let i=0;i<ticks;i++) line(-14+i*4,-4,-14+i*4, i%2?0:4,'#b45309',1);
+  }else{
+    rect(-10,-6,10,12,2,'#93c5fd','#1d4ed8',1.2);
+    rect( -2,-6,28,12,2,'#fde68a','#f59e0b',1.2);
+    for(let i=0;i<7;i++) line(2+i*4,-4,2+i*4, i%2?0:4,'#b45309',1);
+  }
+}
+
+// ====== Scene drawing (dynamic layers) ======
+let towersLayer, enemiesLayer, projsLayer, dragLayer;
+function ensureLayers(){
+  towersLayer = svgEl('g',{},svg);
+  enemiesLayer = svgEl('g',{},svg);
+  projsLayer = svgEl('g',{},svg);
+  dragLayer = svgEl('g',{'pointer-events':'none'},svg);
+}
+ensureLayers();
+
+function drawScene(){
+  // reset dynamic layers
+  [towersLayer,enemiesLayer,projsLayer,dragLayer].forEach(l=>l.remove());
+  ensureLayers();
+
+  // towers
+  for(const t of towers){
+    const g=svgEl('g',{},towersLayer);
+    g.addEventListener('click', ev=>{ ev.stopPropagation(); openUpgradeModal(t); });
+    drawTowerSprite(g, t.kind, t.level, t.x, t.y, 1, 1);
+    // tiny pips for level
+    for(let i=0;i<t.level;i++) svgEl('circle',{cx:t.x-10+i*6, cy:t.y+16, r:2, fill:'#334155'},towersLayer);
+  }
+
+  // enemies
+  for(const e of enemies){
+    const pos=pointAtT(e.t);
+    const emoji = e.type===ENEMY.QUIZ?'❓':(e.type===ENEMY.TEST?'📘':(e.type===ENEMY.FINAL?'📚':'📄'));
+    const tx=svgEl('text',{x:pos.x,y:pos.y,'font-size':20,'text-anchor':'middle','dominant-baseline':'middle'},enemiesLayer);
+    tx.textContent=emoji;
+    const st=enemyStats(e.type,wave,endlessBoost);
+    svgEl('rect',{x:pos.x-16,y:pos.y-24,width:32,height:4,fill:'#fee2e2',rx:2},enemiesLayer);
+    svgEl('rect',{x:pos.x-16,y:pos.y-24,width:clamp((e.hp/st.hp)*32,0,32),height:4,fill:'#ef4444',rx:2},enemiesLayer);
+  }
+
+  // projectiles
+  for(const p of projs) svgEl('circle',{cx:p.x,cy:p.y,r:3,fill:'#111827'},projsLayer);
+
+  // drag overlay
+  if(drag){
+    const r=towerStats(drag.kind,1).range;
+    svgEl('circle',{cx:drag.x,cy:drag.y,r:r,fill:'none',stroke:drag.valid?'#22c55e':'#ef4444','stroke-dasharray':'6 6','stroke-width':2,opacity:.7},dragLayer);
+    const ghost=svgEl('g',{'opacity':.6},dragLayer);
+    drawTowerSprite(ghost, drag.kind, 1, drag.x, drag.y, 1, .6);
+    svgEl('circle',{cx:drag.x,cy:drag.y,r:4,fill:drag.valid?'#22c55e':'#ef4444'},dragLayer);
+  }
+}
+drawScene();
+
+// ====== Combat loop ======
+let lastTime=performance.now();
+function loop(now){
+  const dt=(now-lastTime)/1000; lastTime=now;
+
+  // move enemies
+  const outE=[];
+  for(const e of enemies){
+    const st=enemyStats(e.type,wave,endlessBoost);
+    const tNext=e.t + st.speed*dt*0.12*speed;
+    if(tNext>=1){
+      lives -= (e.type===ENEMY.FINAL?5:1);
+      if(lives<=0){ alert('Class dismissed! The Exams reached your desk. Reload to try again.'); lives=0; }
+    } else outE.push({...e,t:tNext});
+  }
+  enemies=outE;
+
+  // towers fire
+  const ens = enemies.map(e=>({e, pos: pointAtT(e.t)}));
+  const nowMs=performance.now();
+  const newP=[];
+  for(const t of towers){
+    const st=towerStats(t.kind,t.level);
+    const rof=Math.max(50, st.fire/speed);
+    if(!t.lastShot || nowMs - t.lastShot > rof){
+      let target=null, bestT=-1;
+      for(const {e,pos} of ens){
+        if(dist({x:t.x,y:t.y},pos)<=st.range && e.t>bestT){ bestT=e.t; target={e,pos}; }
       }
+      if(target){
+        const ang=Math.atan2(target.pos.y-t.y, target.pos.x-t.x);
+        const v=320*speed;
+        newP.push({id:crypto.randomUUID(),x:t.x,y:t.y,vx:Math.cos(ang)*v,vy:Math.sin(ang)*v,dmg:st.dmg,pierce:st.pierce||0,chain:st.chain||0});
+        t.lastShot=nowMs;
+      }
+    }
+  }
+  if(newP.length) projs.push(...newP);
 
-      // balance (harder, no spawn lock)
-      function enemyStats(type,wave, endlessBoost=0){
-        const s = (1 + wave*0.09) * (1 + endlessBoost);
-        switch(type){
-          case ENEMY_TYPES.HOMEWORK: return { hp:18*s, speed:0.055, reward:3 };
-          case ENEMY_TYPES.QUIZ:     return { hp:36*s, speed:0.043, reward:7 };
-          case ENEMY_TYPES.TEST:     return { hp:85*s, speed:0.034, reward:14 };
-          case ENEMY_TYPES.FINAL:    return { hp:320*s, speed:0.030, reward:45 };
-          default:                   return { hp:20, speed:0.04, reward:5 };
+  // move projectiles & apply damage
+  const outP=[];
+  for(const p of projs){
+    const nx=p.x+p.vx*dt, ny=p.y+p.vy*dt;
+    // collision
+    let hitIndex=-1, hitPos=null, ensNow=enemies.map(e=>({e,pos:pointAtT(e.t)}));
+    for(let i=0;i<ensNow.length;i++){
+      if(dist({x:nx,y:ny},ensNow[i].pos)<14){ hitIndex=i; hitPos=ensNow[i].pos; break; }
+    }
+    if(hitIndex>=0){
+      const e=enemies[hitIndex];
+      e.hp-=p.dmg;
+      if(e.hp<=0){
+        const st=enemyStats(e.type,wave,endlessBoost);
+        enemies.splice(hitIndex,1);
+        coins+=st.reward;
+      }
+      if(p.pierce && p.pierce>0){
+        outP.push({...p,x:nx,y:ny,pierce:p.pierce-1});
+      }else if(p.chain && p.chain>0){
+        // retarget nearest within 80
+        let best=null, bestD=1e9;
+        ensNow=enemies.map(e=>({e,pos:pointAtT(e.t)}));
+        for(const cand of ensNow){
+          const d=dist({x:nx,y:ny},cand.pos);
+          if(d<80 && d<bestD){ best=cand; bestD=d; }
+        }
+        if(best){
+          const ang=Math.atan2(best.pos.y-ny,best.pos.x-nx);
+          outP.push({...p,x:nx,y:ny,vx:Math.cos(ang)*320*speed,vy:Math.sin(ang)*320*speed,chain:p.chain-1});
         }
       }
-      function baseTowerStats(kind, level=1){
-        const L=clamp(level,1,3);
-        if(kind===TOWER_TYPES.PENCIL)     return { range:115+10*L, dmg:5+2*L,  fireRate:630-30*L, name:["Pencil","Pen","Marker"][L-1] };
-        if(kind===TOWER_TYPES.ERASER)     return { range:135+12*L, dmg:12+4*L, fireRate:880-40*L, name:["Eraser","Board Eraser","Giant Sponge"][L-1] };
-        if(kind===TOWER_TYPES.CALCULATOR) return { range:150+14*L, dmg:8+1*L,  fireRate:400-15*L, chain:2+(L-1), name:["Calculator","Sci Calc","Graphing Calc"][L-1] };
-        if(kind===TOWER_TYPES.RULER)      return { range:190+22*L, dmg:10+3*L, fireRate:760-60*L, pierce:1+L, name:["Ruler","Yardstick","Tape Measure"][L-1] };
-        return { range:100, dmg:5, fireRate:800, name:"" };
-      }
-      const BASE_COST = { PENCIL:20, ERASER:35, CALCULATOR:45, RULER:60 };
-      function upgradeCost(level){ return 40 + level*45 }
+    } else if(nx<-20||ny<-20||nx>MAP_W+20||ny>MAP_H+20){
+      // drop
+    } else outP.push({...p,x:nx,y:ny});
+  }
+  projs=outP;
 
-      // classroom decor
-      function ClassroomDecor(){
-        return (
-          <>
-            <rect x={40} y={10} width={300} height={36} rx={6} fill="#083344" stroke="#052e2b" strokeWidth="2"/>
-            <text x={190} y={34} textAnchor="middle" fontSize="16" fill="#bbf7d0">Room 207 — Geometry</text>
-            {[...Array(6)].map((_,i)=>(<rect key={i} x={0} y={80+i*70} width={28} height={56} rx={4} fill="#3b82f6" stroke="#1d4ed8"/>))}
-            {
-              [{x:260,y:120},{x:420,y:120},{x:580,y:120},
-               {x:260,y:260},{x:420,y:260},{x:580,y:260},
-               {x:260,y:400},{x:420,y:400},{x:700,y:360}]
-              .map((d,idx)=>(
-                <g key={idx}>
-                  <rect x={d.x} y={d.y} width={70} height={40} rx={6} fill="#f1f5f9" stroke="#94a3b8"/>
-                  <circle cx={d.x+10} cy={d.y+36} r={3} fill="#64748b"/>
-                </g>
-              ))
-            }
-            <ellipse cx={830} cy={420} rx={70} ry={28} fill="#fde68a" opacity="0.5"/>
-          </>
-        );
-      }
+  // wave progress / win
+  if(!inWave && enemies.length===0 && started){
+    if(wave < TOTAL_WAVES){
+      wave+=1; coins+=26; started=false;
+    } else if(wave===TOTAL_WAVES){
+      winBackdrop.style.display='flex'; started=false;
+    }
+  }
 
-      // tower sprites (by level)
-      function TowerSprite({ kind, level=1, x, y, scale=1, opacity=1 }){
-        const s = scale;
-        if(kind === TOWER_TYPES.PENCIL){
-          if(level===1){ // Pencil
-            return (
-              <g opacity={opacity} transform={`translate(${x-12*s},${y-12*s}) scale(${s})`}>
-                <rect x={2} y={6} width={20} height={12} rx={2} fill="#f59e0b" stroke="#92400e"/>
-                <polygon points="22,6 30,12 22,18" fill="#fde68a" stroke="#92400e"/>
-                <polygon points="30,12 32,12 30,11" fill="#111"/>
-              </g>
-            );
-          }
-          if(level===2){ // Pen
-            return (
-              <g opacity={opacity} transform={`translate(${x-14*s},${y-6*s}) scale(${s})`}>
-                <rect x={0} y={2} width={28} height={8} rx={4} fill="#2563eb" stroke="#1e40af"/>
-                <rect x={24} y={2} width={6} height={8} rx={1} fill="#93c5fd" stroke="#1e40af"/>
-              </g>
-            );
-          }
-          // Marker
-          return (
-            <g opacity={opacity} transform={`translate(${x-16*s},${y-8*s}) scale(${s})`}>
-              <rect x={0} y={2} width={32} height={12} rx={4} fill="#111827" stroke="#334155"/>
-              <rect x={2} y={4} width={8} height={8} rx={2} fill="#ef4444" />
-            </g>
-          );
-        }
-        if(kind === TOWER_TYPES.ERASER){
-          if(level===1){
-            return (
-              <g opacity={opacity} transform={`translate(${x-14*s},${y-10*s}) scale(${s})`}>
-                <rect x={0} y={0} width={28} height={20} rx={6} fill="#fecdd3" stroke="#fb7185"/>
-                <rect x={10} y={0} width={18} height={20} rx={6} fill="#fdf2f8" stroke="#f472b6"/>
-              </g>
-            );
-          }
-          if(level===2){
-            return (
-              <g opacity={opacity} transform={`translate(${x-18*s},${y-10*s}) scale(${s})`}>
-                <rect x={0} y={2} width={36} height={16} rx={4} fill="#0ea5e9" stroke="#0369a1"/>
-                <rect x={2} y={14} width={32} height={4} rx={2} fill="#1f2937"/>
-              </g>
-            );
-          }
-          return (
-            <g opacity={opacity} transform={`translate(${x-16*s},${y-10*s}) scale(${s})`}>
-              <rect x={0} y={0} width={32} height={20} rx={6} fill="#fde68a" stroke="#f59e0b"/>
-              <circle cx={6} cy={6} r={1.5} fill="#f59e0b"/><circle cx={12} cy={12} r={1.5} fill="#f59e0b"/>
-              <circle cx={20} cy={8} r={1.5} fill="#f59e0b"/><circle cx={26} cy={14} r={1.5} fill="#f59e0b"/>
-            </g>
-          );
-        }
-        if(kind === TOWER_TYPES.CALCULATOR){
-          const shell = (w,h,screenColor='#d1fae5') => (
-            <g>
-              <rect x={0} y={0} width={w} height={h} rx={4} fill="#e5e7eb" stroke="#9ca3af"/>
-              <rect x={4} y={4} width={w-8} height={10} rx={2} fill={screenColor} stroke="#10b981"/>
-              {[...Array(8)].map((_,i)=>{const cols=4, r=Math.floor(i/cols), c=i%cols; return (
-                <rect key={i} x={4+c*6} y={18+r*6} width="5" height="5" rx="1" fill="#fff" stroke="#9ca3af"/>
-              )})}
-            </g>
-          );
-          if(level===1){
-            return (<g opacity={opacity} transform={`translate(${x-14*s},${y-22*s}) scale(${s})`}>{shell(28,40,'#d1fae5')}</g>);
-          }
-          if(level===2){
-            return (<g opacity={opacity} transform={`translate(${x-16*s},${y-24*s}) scale(${s})`}>{shell(32,44,'#bbf7d0')}</g>);
-          }
-          return (<g opacity={opacity} transform={`translate(${x-18*s},${y-26*s}) scale(${s})`}>{shell(36,48,'#a7f3d0')}</g>);
-        }
-        // Ruler → Yardstick → Tape Measure
-        const tickCount = level===1?8 : level===2?10 : 10;
-        return (
-          <g opacity={opacity} transform={`translate(${x-(level===3?10:18)*s},${y-6*s}) scale(${s})`}>
-            {level<3 ? (
-              <g>
-                <rect x={0} y={0} width={level===2?40:36} height={12} rx={2} fill="#fde68a" stroke="#f59e0b"/>
-                {[...Array(tickCount)].map((_,i)=><line key={i} x1={4+i*4} y1={2} x2={4+i*4} y2={i%2?6:10} stroke="#b45309" strokeWidth="1"/>)}
-              </g>
-            ):(
-              <g>
-                <rect x={8} y={0} width={28} height={12} rx={2} fill="#fde68a" stroke="#f59e0b"/>
-                <rect x={0} y={0} width={10} height={12} rx={2} fill="#93c5fd" stroke="#1d4ed8"/>
-                {[...Array(7)].map((_,i)=><line key={i} x1={12+i*4} y1={2} x2={12+i*4} y2={i%2?6:10} stroke="#b45309" strokeWidth="1"/>)}
-              </g>
-            )}
-          </g>
-        );
-      }
+  syncUI();
+  drawScene();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
 
-      // upgrade confirm modal
-      function UpgradeModal({ open, tower, onCancel, onConfirm }){
-        if(!open || !tower) return null;
-        const curr = baseTowerStats(tower.kind, tower.level);
-        const nextLevel = clamp(tower.level+1,1,3);
-        const next = baseTowerStats(tower.kind, nextLevel);
-        const cost = upgradeCost(tower.level);
-        const delta = {
-          range: Math.floor(next.range - curr.range),
-          dmg: next.dmg - curr.dmg,
-          rof: Math.max(0, curr.fireRate - next.fireRate)
-        };
-        return (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-white w-[420px] rounded-2xl shadow-2xl p-4 border">
-              <h3 className="text-lg font-bold">Upgrade {curr.name} → {next.name}</h3>
-              <div className="mt-3 flex items-center gap-4">
-                <svg width="80" height="60"><g transform="translate(40,30)"><TowerSprite kind={tower.kind} level={tower.level} x={0} y={0} scale={1.2}/></g></svg>
-                <span className="text-2xl">→</span>
-                <svg width="80" height="60"><g transform="translate(40,30)"><TowerSprite kind={tower.kind} level={nextLevel} x={0} y={0} scale={1.2}/></g></svg>
-              </div>
-              <div className="mt-3 text-sm">
-                <div>Cost: <b>{cost}</b> Study Points</div>
-                <ul className="mt-2 list-disc ml-5">
-                  <li>Range: +{delta.range}</li>
-                  <li>Damage: +{delta.dmg}</li>
-                  <li>Faster rate of fire: −{delta.rof} ms</li>
-                </ul>
-              </div>
-              <div className="mt-4 flex justify-end gap-2">
-                <button className="px-3 py-2 rounded-lg bg-gray-200" onClick={onCancel}>Cancel</button>
-                <button className="px-3 py-2 rounded-lg bg-emerald-600 text-white" onClick={onConfirm}>Confirm Upgrade</button>
-              </div>
-            </div>
-          </div>
-        );
-      }
+// ====== Spawning ======
+let spawnTimer=null;
+function spawnWave(){
+  if(spawnTimer) clearInterval(spawnTimer);
+  let i=0; const schedule=[];
+  const countBase = 10 + wave*3;
+  const count = Math.min(40, countBase);
+  for(let k=0;k<count;k++){
+    const r=Math.random(); let type=ENEMY.HOMEWORK;
+    if(wave>=2 && r>0.55) type=ENEMY.QUIZ;
+    if(wave>=5 && r>0.78) type=ENEMY.TEST;
+    if(wave % 6===0 && k>=count-2) type=ENEMY.FINAL;
+    schedule.push(type);
+  }
+  const interval = clamp(520 - wave*6, 260, 520) / speed;
+  inWave=true; syncUI();
+  spawnTimer=setInterval(()=>{
+    if(i>=schedule.length){ clearInterval(spawnTimer); spawnTimer=null; setTimeout(()=>{inWave=false;},1000); return; }
+    const type=schedule[i++]; const st=enemyStats(type,wave,endlessBoost);
+    enemies.push({id:crypto.randomUUID(), t:0, type, hp:st.hp});
+  }, interval);
+}
 
-      // win / endless modal
-      function WinModal({ open, onContinue }){
-        if(!open) return null;
-        return (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-white w-[420px] rounded-2xl shadow-2xl p-5 border text-center">
-              <h3 className="text-2xl font-extrabold">You Beat All 50 Waves! 🎉</h3>
-              <p className="mt-2 text-gray-700">Want to keep going? Endless mode ramps difficulty every wave.</p>
-              <button className="mt-4 px-4 py-2 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700" onClick={onContinue}>
-                Continue — Endless Mode
-              </button>
-            </div>
-          </div>
-        );
-      }
+// ====== Controls ======
+startBtn.onclick=function(){
+  if(!inWave){ started=true; spawnWave(); }
+};
+speedBtn.onclick=function(){
+  speed = speed===1 ? 2 : (speed===2 ? 3 : 1);
+  // if spawning, recreate timer with new interval
+  if(inWave){ inWave=false; if(spawnTimer){ clearInterval(spawnTimer); spawnTimer=null; } setTimeout(()=>{ inWave=true; spawnWave(); }, 0); }
+  syncUI();
+};
 
-      function App(){
-        // Start with exactly enough to buy a Pencil
-        const [coins,setCoins]=useState(20);
-        const [lives,setLives]=useState(20);
-        const [wave,setWave]=useState(1);
-        const [inWave,setInWave]=useState(false);
-        const [endlessBoost,setEndlessBoost]=useState(0); // grows after 50
+// click to upgrade
+svg.addEventListener('mousedown', function(ev){
+  // if clicking on tower (approx hit test)
+  const rect=svg.getBoundingClientRect(); const x=ev.clientX-rect.left, y=ev.clientY-rect.top;
+  for(const t of towers){
+    if(dist({x,y},{x:t.x,y:t.y})<18){ openUpgradeModal(t); return; }
+  }
+});
 
-        const [speed,setSpeed]=useState(1); // 1x, 2x, 3x
-
-        const [towers,setTowers]=useState([]);
-        const [enemies,setEnemies]=useState([]);
-        const [projectiles,setProjectiles]=useState([]);
-
-        const [selectedKind,setSelectedKind]=useState(null);
-        const [drag,setDrag]=useState(null); // {kind,x,y,valid}
-        const [upgradeOpen,setUpgradeOpen]=useState(false);
-        const [upgradeTower,setUpgradeTower]=useState(null);
-        const [showWin,setShowWin]=useState(false);
-
-        const startedRef = useRef(false);
-
-        // spawn waves
-        useEffect(()=>{
-          let timer;
-          if(inWave){
-            let i=0; const schedule=[];
-            const countBase = 10 + wave*3;
-            const count = Math.min(40, countBase);
-            for(let k=0;k<count;k++){
-              const r=Math.random(); let type=ENEMY_TYPES.HOMEWORK;
-              if(wave>=2 && r>0.55)  type=ENEMY_TYPES.QUIZ;
-              if(wave>=5 && r>0.78)  type=ENEMY_TYPES.TEST;
-              if(wave % 6 === 0 && k >= count-2) type=ENEMY_TYPES.FINAL;
-              schedule.push(type);
-            }
-            const interval = clamp(520 - wave*6, 260, 520) / speed;
-            timer=setInterval(()=>{
-              if(i>=schedule.length){ clearInterval(timer); setTimeout(()=>setInWave(false),1000); return; }
-              const type=schedule[i++]; const st=enemyStats(type,wave,endlessBoost);
-              setEnemies(prev=>[...prev,{id:crypto.randomUUID(), t:0, hp:st.hp, type}]);
-            }, interval);
-          }
-          return ()=>clearInterval(timer);
-        },[inWave,wave,speed,endlessBoost]);
-
-        // game loop
-        useEffect(()=>{
-          let last=performance.now(), raf;
-          const step=(now)=>{
-            const dt=(now-last)/1000; last=now;
-
-            // enemy motion
-            setEnemies(prev=>{
-              const out=[];
-              for(const e of prev){
-                const st=enemyStats(e.type,wave,endlessBoost);
-                const tNext=e.t + st.speed*dt*0.12*speed;
-                if(tNext>=1) setLives(L=>Math.max(0, L-(e.type===ENEMY_TYPES.FINAL?5:1)));
-                else out.push({...e,t:tNext});
-              }
-              return out;
-            });
-
-            // towers fire
-            setTowers(prev=>{
-              const nowMs=performance.now();
-              const ens=enemies.map(e=>({...e,pos:pointAtT(PATH,e.t)}));
-              const newP=[];
-              const upd=prev.map(tw=>{
-                const st=baseTowerStats(tw.kind,tw.level);
-                const adjustedRate = Math.max(50, st.fireRate / speed);
-                if(!tw.lastShot || nowMs - tw.lastShot > adjustedRate){
-                  let target=null, maxT=-1;
-                  for(const e of ens){
-                    const pos=e.pos;
-                    if(distance({x:tw.x,y:tw.y},pos)<=st.range){
-                      if(e.t>maxT){ maxT=e.t; target=e; }
-                    }
-                  }
-                  if(target){
-                    const ang=Math.atan2(target.pos.y-tw.y, target.pos.x-tw.x);
-                    const projSpeed = 320 * speed;
-                    newP.push({id:crypto.randomUUID(), x:tw.x,y:tw.y, vx:Math.cos(ang)*projSpeed, vy:Math.sin(ang)*projSpeed, dmg:st.dmg, pierce:st.pierce||0, chain:st.chain||0});
-                    return {...tw, lastShot:nowMs};
-                  }
-                }
-                return tw;
-              });
-              if(newP.length) setProjectiles(p=>[...p,...newP]);
-              return upd;
-            });
-
-            // projectiles
-            setProjectiles(prev=>{
-              const out=[]; const ens=enemies.map(e=>({...e,pos:pointAtT(PATH,e.t)}));
-              for(const p of prev){
-                const nx=p.x+p.vx*dt, ny=p.y+p.vy*dt; let hit=-1;
-                for(let i=0;i<ens.length;i++){ if(distance({x:nx,y:ny},ens[i].pos)<14){ hit=i; break; } }
-                if(hit>=0){
-                  const eHit=ens[hit];
-                  setEnemies(arr=>{
-                    const copy=[...arr]; const idx=copy.findIndex(x=>x.id===eHit.id);
-                    if(idx>=0){
-                      const type=copy[idx].type, newHp=copy[idx].hp - p.dmg;
-                      if(newHp<=0){ const st=enemyStats(type,wave,endlessBoost); copy.splice(idx,1); setCoins(c=>c+st.reward); }
-                      else copy[idx]={...copy[idx], hp:newHp};
-                    }
-                    return copy;
-                  });
-                  if(p.pierce&&p.pierce>0) out.push({...p,x:nx,y:ny,pierce:p.pierce-1});
-                  else if(p.chain&&p.chain>0){
-                    const others=ens.filter(e=>e.id!==eHit.id); let best=null,bestD=1e9;
-                    for(const e of others){ const d=distance({x:nx,y:ny},e.pos); if(d<80&&d<bestD){ best=e; bestD=d; } }
-                    if(best){ const ang=Math.atan2(best.pos.y-ny, best.pos.x-nx); out.push({...p,x:nx,y:ny, vx=Math.cos(ang)*320*speed, vy=Math.sin(ang)*320*speed, chain:p.chain-1}); }
-                  }
-                } else if(nx<-20||ny<-20||nx>MAP_W+20||ny>MAP_H+20){
-                  // offscreen
-                } else out.push({...p,x:nx,y:ny});
-              }
-              return out;
-            });
-
-            raf=requestAnimationFrame(step);
-          };
-          raf=requestAnimationFrame(step);
-          return ()=>cancelAnimationFrame(raf);
-        },[enemies,wave,speed,endlessBoost]);
-
-        // wave advance & win → endless (only if you actually started a wave)
-        useEffect(()=>{
-          if(!inWave && enemies.length===0 && startedRef.current){
-            if(wave < TOTAL_WAVES){
-              setWave(w=>w+1);
-              setCoins(c=>c+26);
-              startedRef.current = false;
-            } else if(wave === TOTAL_WAVES){
-              setShowWin(true);
-              startedRef.current = false;
-            }
-          }
-        },[inWave,enemies.length,wave]);
-
-        useEffect(()=>{ if(lives<=0) alert("Class dismissed! The Exams reached your desk. Reload to try again."); },[lives]);
-
-        function beginWave(){
-          if(!inWave){
-            setInWave(true);
-            startedRef.current = true;
-          }
-        }
-        function cycleSpeed(){ setSpeed(s=> s===1 ? 2 : s===2 ? 3 : 1); }
-
-        // drag & place
-        function canPlaceAt(kind, x, y){
-          if (x<24 || x>MAP_W-24 || y<24 || y>MAP_H-24) return false;
-          const nearPath = PATH.some((_,i)=>{
-            if(i===PATH.length-1) return false;
-            const A=PATH[i], B=PATH[i+1]; const ABx=B.x-A.x, ABy=B.y-A.y;
-            const t=clamp(((x-A.x)*ABx + (y-A.y)*ABy)/(ABx*ABx + ABy*ABy),0,1);
-            const proj={x:A.x+ABx*t, y:A.y+ABy*t};
-            return distance({x,y},proj) < 40;
-          });
-          if(nearPath) return false;
-          for(const t of towers){ if(distance({x,y},{x:t.x,y:t.y})<34) return false; }
-          return true;
-        }
-
-        function startDrag(kind){ setSelectedKind(kind); setDrag({ kind, x: MAP_W/2, y: MAP_H/2, valid:false }); }
-        function onBoardMove(e){
-          if(!drag) return;
-          const rect=e.currentTarget.getBoundingClientRect();
-          const x=e.clientX - rect.left, y=e.clientY - rect.top;
-          setDrag(d=> d ? ({...d, x, y, valid: canPlaceAt(d.kind,x,y) && coins >= BASE_COST[d.kind] }) : d);
-        }
-        function onBoardClick(){
-          if(!drag) return;
-          const {kind,x,y,valid}=drag; if(!valid) return;
-          const cost=BASE_COST[kind]; if(coins<cost) return;
-          setCoins(c=>c-cost);
-          setTowers(arr=>[...arr,{id:crypto.randomUUID(), x,y, kind, level:1, lastShot:0}]);
-          setDrag(null); setSelectedKind(null);
-        }
-        function cancelDrag(){ if(drag){ setDrag(null); setSelectedKind(null); } }
-
-        // upgrades (confirm first)
-        function requestUpgrade(tower){
-          if(tower.level>=3) return;
-          setUpgradeTower(tower);
-          setUpgradeOpen(true);
-        }
-        function confirmUpgrade(){
-          const t = upgradeTower;
-          if(!t){ setUpgradeOpen(false); return; }
-          const cost = upgradeCost(t.level);
-          if(coins < cost){ setUpgradeOpen(false); return; }
-          setCoins(c=>c-cost);
-          setTowers(arr=>arr.map(x=> x.id===t.id ? {...x, level: clamp(x.level+1,1,3)} : x));
-          setUpgradeOpen(false);
-          setUpgradeTower(null);
-        }
-
-        function continueEndless(){
-          setShowWin(false);
-          setWave(w=>w+1);              // wave 51, etc.
-          setEndlessBoost(b=> b + 0.08);
-          startedRef.current = true;
-          setInWave(true);
-        }
-
-        const pathPolyline=useMemo(()=> PATH.map(p=>`${p.x},${p.y}`).join(" "), []);
-
-        return (
-          <div className="w-full min-h-screen text-gray-900 p-4">
-            <div className="max-w-[1200px] mx-auto">
-              <h1 className="text-2xl font-extrabold tracking-tight">📚 Classroom Defense — Math Game v2</h1>
-              <p className="text-sm text-gray-700">Drag to place. Click a tower to upgrade (with confirmation). Shooting from the start enabled.</p>
-
-              <div className="mt-3 flex items-center gap-3 flex-wrap">
-                <div className="px-3 py-2 rounded-xl bg-white shadow border">💰 Study Points: <b>{formatCoins(coins)}</b></div>
-                <div className="px-3 py-2 rounded-xl bg-white shadow border">❤️ Lives: <b>{lives}</b></div>
-                <div className="px-3 py-2 rounded-xl bg-white shadow border">📈 Wave: <b>{wave}{wave>TOTAL_WAVES?" (Endless)":""}</b></div>
-
-                <button className={`px-4 py-2 rounded-xl shadow text-white ${inWave?"bg-gray-400":"bg-emerald-600 hover:bg-emerald-700"}`}
-                        onClick={beginWave} disabled={inWave}>
-                  {inWave?"Wave Running…":"Start Wave"}
-                </button>
-
-                <button className="px-4 py-2 rounded-xl shadow bg-indigo-600 hover:bg-indigo-700 text-white"
-                        onClick={cycleSpeed}>
-                  ⏩ Speed: {speed}x
-                </button>
-              </div>
-
-              {/* Build bar */}
-              <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {Object.values(TOWER_TYPES).map(kind=>(
-                  <button key={kind} onClick={()=>startDrag(kind)}
-                          className={`border rounded-xl p-3 bg-white shadow hover:shadow-md transition ${selectedKind===kind?"ring-2 ring-blue-500":""}`}>
-                    <div className="flex items-center gap-2">
-                      <svg width="28" height="28"><g transform="translate(14,14)"><TowerSprite kind={kind} level={1} x={0} y={0} scale={0.9}/></g></svg>
-                      <div className="font-bold">{baseTowerStats(kind,1).name}</div>
-                    </div>
-                    <div className="text-xs text-gray-600 mt-1">Cost: {BASE_COST[kind]}</div>
-                    <div className="text-xs text-gray-500">
-                      {(()=>{const s=baseTowerStats(kind,1); return `Rng ${Math.floor(s.range)} / Dmg ${s.dmg} / ROF ${Math.max(200,s.fireRate)}ms`})()}
-                    </div>
-                    <div className="text-[10px] text-emerald-700 mt-1">Drag onto board to place</div>
-                  </button>
-                ))}
-              </div>
-
-              {/* Board */}
-              <div className="mt-4 relative rounded-3xl border shadow overflow-hidden">
-                <svg width={MAP_W} height={MAP_H}
-                     onMouseMove={onBoardMove} onClick={onBoardClick} onMouseLeave={cancelDrag}
-                     style={{cursor: drag ? (drag.valid ? 'copy' : 'not-allowed') : 'crosshair'}}
-                     className="block">
-                  {/* Floor tiles */}
-                  <defs>
-                    <pattern id="tiles" width="24" height="24" patternUnits="userSpaceOnUse">
-                      <rect width="24" height="24" fill="#fafafa"/>
-                      <path d="M 0 24 L 24 0" stroke="#f1f5f9" strokeWidth="1"/>
-                    </pattern>
-                  </defs>
-                  <rect x={0} y={0} width={MAP_W} height={MAP_H} fill="url(#tiles)"/>
-
-                  {/* decor */}
-                  <ClassroomDecor/>
-
-                  {/* Hallway path */}
-                  <polyline points={pathPolyline} fill="none" stroke="#cbd5e1" strokeWidth="30" strokeLinejoin="round" strokeLinecap="round"/>
-                  <polyline points={pathPolyline} fill="none" stroke="#64748b" strokeWidth="6" strokeLinejoin="round" strokeLinecap="round"/>
-
-                  {/* Base / Desk */}
-                  <g>
-                    <rect x={820} y={330} width={64} height={64} rx={12} fill="#fff7ed" stroke="#fb923c" strokeWidth="3"/>
-                    <text x={852} y={364} textAnchor="middle" fontSize="12">Desk</text>
-                  </g>
-
-                  {/* Towers */}
-                  {towers.map(t=>(
-                    <g key={t.id} onClick={(e)=>{ e.stopPropagation(); requestUpgrade(t); }} className="cursor-pointer">
-                      <TowerSprite kind={t.kind} level={t.level} x={t.x} y={t.y}/>
-                      {[...Array(t.level)].map((_,i)=> <circle key={i} cx={t.x-10+i*6} cy={t.y+16} r="2" fill="#334155" />)}
-                    </g>
-                  ))}
-
-                  {/* Enemies */}
-                  {enemies.map(e=>{
-                    const pos=pointAtT(PATH,e.t);
-                    let emoji="📄"; if(e.type===ENEMY_TYPES.QUIZ) emoji="❓"; if(e.type===ENEMY_TYPES.TEST) emoji="📘"; if(e.type===ENEMY_TYPES.FINAL) emoji="📚";
-                    return (
-                      <g key={e.id}>
-                        <text x={pos.x} y={pos.y} fontSize="20" textAnchor="middle" dominantBaseline="middle">{emoji}</text>
-                        <rect x={pos.x-16} y={pos.y-24} width="32" height="4" fill="#fee2e2" rx="2"/>
-                        <rect x={pos.x-16} y={pos.y-24} width={clamp((e.hp/enemyStats(e.type,wave,endlessBoost).hp)*32,0,32)} height="4" fill="#ef4444" rx="2"/>
-                      </g>
-                    );
-                  })}
-
-                  {/* Projectiles */}
-                  {projectiles.map(p=> (<circle key={p.id} cx={p.x} cy={p.y} r="3" fill="#111827" />))}
-
-                  {/* Drag ghost & placement ring */}
-                  {drag && (
-                    <g pointerEvents="none">
-                      <circle cx={drag.x} cy={drag.y} r={baseTowerStats(drag.kind,1).range}
-                              fill="none" stroke={drag.valid?"#22c55e":"#ef4444"}
-                              strokeDasharray="6 6" strokeWidth="2" opacity="0.7"/>
-                      <TowerSprite kind={drag.kind} level={1} x={drag.x} y={drag.y} opacity={0.6}/>
-                      <circle cx={drag.x} cy={drag.y} r="4" fill={drag.valid ? "#22c55e" : "#ef4444"} />
-                    </g>
-                  )}
-                </svg>
-              </div>
-
-              <div className="mt-3 text-xs text-gray-600">
-                Tip: Green = valid placement, red = blocked. Use ⏩ to cycle 1×/2×/3×.
-              </div>
-            </div>
-
-            <UpgradeModal
-              open={upgradeOpen}
-              tower={upgradeTower}
-              onCancel={()=>{ setUpgradeOpen(false); setUpgradeTower(null); }}
-              onConfirm={confirmUpgrade}
-            />
-            <WinModal
-              open={showWin}
-              onContinue={()=>{
-                setShowWin(false);
-                setWave(w=>w+1);
-                setEndlessBoost(b=> b + 0.08);
-                startedRef.current = true;
-                setInWave(true);
-              }}
-            />
-          </div>
-        );
-      }
-
-      // Mount with a guard so any unexpected error shows in the overlay
-      try {
-        ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
-      } catch (err) {
-        const box=document.createElement('div'); box.className='errbox';
-        box.innerHTML='<b>Render error:</b><pre>'+String(err && err.message || err)+'</pre>';
-        document.body.appendChild(box);
-      }
-    </script>
-  </body>
+// ====== Done ======
+</script>
+</body>
 </html>
